@@ -1,0 +1,1 @@
+# applicants app initialization

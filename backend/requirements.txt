@@ -1,0 +1,46 @@
+# Django Framework
+Django==5.1.3
+djangorestframework==3.15.2
+django-cors-headers==4.6.0
+
+# Authentication
+djangorestframework-simplejwt==5.3.1
+PyJWT==2.9.0
+
+# Database
+psycopg2-binary==2.9.10
+# Use PostgreSQL - it's better for production, has JSON support, and works well with Django
+
+# Task Queue & Caching
+celery==5.4.0
+redis==5.2.0
+django-redis==5.4.0
+
+# AI/ML Stack
+langchain==0.3.7
+langgraph==0.2.45
+langchain-google-genai==2.0.5
+google-generativeai==0.8.3
+langchain-openai==0.2.5
+openai==1.54.3
+
+# Video Processing (for video response analysis)
+opencv-python==4.10.0.84
+opencv-contrib-python==4.10.0.84
+pillow==11.0.0
+numpy==2.2.0
+
+# Environment Management
+python-dotenv==1.0.1
+
+# API & Data Validation
+pydantic==2.9.2
+requests==2.32.3
+
+# Utilities
+python-dateutil==2.9.0
+pytz==2024.2
+
+# Development & Testing
+pytest==8.3.3
+pytest-django==4.9.0
