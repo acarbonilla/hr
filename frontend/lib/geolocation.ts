@@ -13,7 +13,7 @@ export interface GeolocationData {
  * @param timeoutMs Request timeout in milliseconds (default 3000ms)
  * @returns Promise with latitude and longitude
  */
-export const getCurrentLocation = (timeoutMs: number = 3000): Promise<GeolocationData> => {
+export const getCurrentLocation = (timeoutMs: number = 20000, enableHighAccuracy: boolean = false): Promise<GeolocationData> => {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error("Geolocation is not supported by this browser"));
@@ -46,7 +46,7 @@ export const getCurrentLocation = (timeoutMs: number = 3000): Promise<Geolocatio
         reject(new Error(errorMessage));
       },
       {
-        enableHighAccuracy: true,
+        enableHighAccuracy,
         timeout: timeoutMs,
         maximumAge: 0,
       }

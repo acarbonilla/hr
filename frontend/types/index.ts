@@ -24,6 +24,8 @@ export interface Applicant {
   longitude?: number;
   distance_from_office?: number;
   geo_status?: "onsite" | "offsite" | "unknown";
+  is_onsite?: boolean;
+  location_source?: string;
   created_at: string;
   updated_at: string;
 }

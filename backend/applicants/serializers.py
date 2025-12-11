@@ -73,6 +73,8 @@ class ApplicantCreateSerializer(serializers.ModelSerializer):
     applicant_lat = serializers.FloatField(required=False, allow_null=True, write_only=True)
     applicant_lng = serializers.FloatField(required=False, allow_null=True, write_only=True)
     application_source = serializers.CharField(required=False)
+    is_onsite = serializers.BooleanField(required=False, allow_null=True, write_only=True)
+    location_source = serializers.CharField(required=False, allow_null=True, write_only=True)
     
     class Meta:
         model = Applicant
@@ -85,7 +87,9 @@ class ApplicantCreateSerializer(serializers.ModelSerializer):
             'latitude',
             'longitude',
             'applicant_lat',
-            'applicant_lng'
+            'applicant_lng',
+            'is_onsite',
+            'location_source'
         ]
         extra_kwargs = {
             'email': {'validators': []},  # Remove default validators, we'll handle in validate_email
@@ -193,6 +197,8 @@ class ApplicantCreateSerializer(serializers.ModelSerializer):
         validated_data['latitude'] = latitude
         validated_data['longitude'] = longitude
         validated_data['geo_status'] = geo_status
+        validated_data.pop('is_onsite', None)
+        validated_data.pop('location_source', None)
 
         # Default application_source if absent
         if 'application_source' not in validated_data or not validated_data.get('application_source'):

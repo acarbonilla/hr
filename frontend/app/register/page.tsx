@@ -23,6 +23,7 @@ export default function RegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [apiError, setApiError] = useState("");
   const [location, setLocation] = useState<GeolocationData | null>(null);
+  const [locationSource, setLocationSource] = useState<"gps" | "ip" | "none">("none");
   const [locationError, setLocationError] = useState("");
   const [isGettingLocation, setIsGettingLocation] = useState(true);
 
@@ -39,12 +40,36 @@ export default function RegisterPage() {
   useEffect(() => {
     const getLocation = async () => {
       try {
-        const coords = await getCurrentLocation(3000);
+        const coords = await getCurrentLocation(20000, false);
         setLocation(coords);
+        setLocationSource("gps");
         setLocationError("");
       } catch (error: any) {
         console.warn("Geolocation error:", error.message);
-        setLocationError(error.message);
+        // Fallback to IP-based geolocation
+        try {
+          const res = await fetch("https://ipapi.co/json/");
+          const data = await res.json();
+          if (data && data.latitude && data.longitude) {
+            const fallback = {
+              latitude: data.latitude,
+              longitude: data.longitude,
+              accuracy: data?.accuracy || 0,
+            };
+            setLocation(fallback);
+            setLocationSource("ip");
+            setLocationError("");
+          } else {
+            setLocation(null);
+            setLocationSource("none");
+            setLocationError("Location not available");
+          }
+        } catch (ipErr) {
+          console.warn("IP geolocation failed", ipErr);
+          setLocation(null);
+          setLocationSource("none");
+          setLocationError("Location not available");
+        }
       } finally {
         setIsGettingLocation(false);
       }
@@ -116,7 +141,9 @@ export default function RegisterPage() {
         applicant_lng: location?.longitude ?? null,
         latitude: location?.latitude ?? null,
         longitude: location?.longitude ?? null,
-      };
+        is_onsite: locationSource === "gps",
+        location_source: locationSource,
+        };
 
       console.log("Sending registration data:", registrationData);
 

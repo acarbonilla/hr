@@ -81,6 +81,8 @@ export const applicantAPI = {
     longitude?: number | null;
     applicant_lat?: number | null;
     applicant_lng?: number | null;
+    is_onsite?: boolean;
+    location_source?: string;
   }) => api.post("/applicants/", data),
 
   // Get applicant by ID
