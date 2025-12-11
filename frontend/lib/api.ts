@@ -36,7 +36,8 @@ api.interceptors.request.use(
       localStorage.removeItem("refresh_token");
 
       const hrToken = localStorage.getItem("hr_access");
-      const token = hrToken || localStorage.getItem("applicant_access") || localStorage.getItem("authToken");
+      const applicantToken = localStorage.getItem("applicantToken") || localStorage.getItem("applicant_access");
+      const token = hrToken || applicantToken || localStorage.getItem("authToken");
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       }

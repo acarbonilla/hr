@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from accounts.permissions import IsHR
+from accounts.authentication import generate_applicant_token
 from django.db.models import Q
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -105,12 +106,17 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         try:
             applicant = serializer.save()
             
-            # Return full applicant data
+            # Generate applicant token for passwordless interview access
+            token = generate_applicant_token(applicant.id)
+            redirect_url = f"/interview/{applicant.id}"
+
             response_serializer = ApplicantSerializer(applicant)
             return Response(
                 {
                     'message': 'Applicant registered successfully',
-                    'applicant': response_serializer.data
+                    'applicant': response_serializer.data,
+                    'token': token,
+                    'redirect_url': redirect_url,
                 },
                 status=status.HTTP_201_CREATED
             )

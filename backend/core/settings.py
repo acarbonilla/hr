@@ -240,6 +240,10 @@ DEEPGRAM_API_KEY = os.getenv('DEEPGRAM_API_KEY', '')
 
 AUTH_USER_MODEL = 'accounts.User'
 
+# Applicant token settings
+APPLICANT_SECRET = os.getenv("APPLICANT_SECRET", SECRET_KEY)
+APPLICANT_TOKEN_EXPIRY_HOURS = int(os.getenv("APPLICANT_TOKEN_EXPIRY_HOURS", "12"))
+
 
 # ============================
 # MEDIA FILES (for video uploads, documents)

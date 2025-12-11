@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Webcam from "react-webcam";
 import { interviewAPI, questionAPI } from "@/lib/api";
+import { getApplicantToken } from "@/app/utils/auth-applicant";
 import { useStore } from "@/store/useStore";
 import {
   Video,
@@ -66,7 +67,10 @@ export default function InterviewPage() {
         setIsLoading(true);
 
         // Fetch interview details
-        const interviewResponse = await interviewAPI.getInterview(interviewId);
+        const token = getApplicantToken();
+        const interviewResponse = await interviewAPI.getInterview(interviewId, {
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
         console.log("Interview Response:", interviewResponse.data);
         const interviewData = interviewResponse.data.interview || interviewResponse.data;
         console.log("Interview Data:", interviewData);

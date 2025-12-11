@@ -123,6 +123,12 @@ export default function RegisterPage() {
       // Register applicant
       const applicantResponse = await applicantAPI.register(registrationData);
       const applicant = applicantResponse.data.applicant || applicantResponse.data;
+      const token = applicantResponse.data.token;
+      const redirectUrl = applicantResponse.data.redirect_url;
+
+      if (token) {
+        localStorage.setItem("applicantToken", token);
+      }
 
       setCurrentApplicant(applicant);
 
@@ -161,8 +167,12 @@ export default function RegisterPage() {
         }
       }
 
-      // Redirect to position selection page if no position or interview creation failed
-      router.push(`/position-select?applicant_id=${applicant.id}`);
+      // Redirect using backend-provided redirect URL if available
+      if (redirectUrl) {
+        router.push(redirectUrl);
+      } else {
+        router.push(`/position-select?applicant_id=${applicant.id}`);
+      }
     } catch (error: any) {
       console.error("Registration error:", error);
       console.error("Error response data:", JSON.stringify(error.response?.data, null, 2));

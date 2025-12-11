@@ -73,3 +73,14 @@ class RolePermission(BasePermission):
             return any(g in required_upper for g in groups)
         except Exception:
             return False
+
+
+class IsApplicantOnly(BasePermission):
+    """
+    Allow only applicant-authenticated requests (using applicant tokens).
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        # applicant tokens set a non-User object (Applicant) with is_authenticated
+        return bool(user and getattr(user, "is_authenticated", False) and hasattr(user, "id") and not hasattr(user, "is_staff"))
