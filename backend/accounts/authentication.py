@@ -11,6 +11,27 @@ APPLICANT_TOKEN_EXPIRY_HOURS = getattr(settings, "APPLICANT_TOKEN_EXPIRY_HOURS",
 PHASE2_TOKEN_EXPIRY_HOURS = getattr(settings, "PHASE2_TOKEN_EXPIRY_HOURS", 24)
 
 
+def validate_hr_access(user):
+    if not user or not user.is_authenticated:
+        return False
+
+    # Allowed HR roles
+    allowed_roles = ["hr_manager", "hr_recruiter"]
+
+    if user.role in allowed_roles:
+        return True
+
+    if getattr(settings, "LOG_HR_AUTH", False):
+        print(
+            "AUTH_DEBUG →",
+            f"user={user.username if user else None},",
+            f"role={getattr(user, 'role', None)},",
+            f"groups={[g.name for g in user.groups.all()] if user and user.is_authenticated else []}",
+        )
+
+    return False
+
+
 def generate_applicant_token(applicant_id, expiry_hours=None):
     expiry_hours = expiry_hours or APPLICANT_TOKEN_EXPIRY_HOURS
     expires_at = datetime.utcnow() + timedelta(hours=expiry_hours)

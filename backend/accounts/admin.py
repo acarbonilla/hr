@@ -8,8 +8,9 @@ class CustomUserAdmin(UserAdmin):
     list_display = ['username', 'email', 'user_type', 'is_active', 'date_joined']
     list_filter = ['user_type', 'is_active', 'is_staff']
     fieldsets = UserAdmin.fieldsets + (
-        ('Custom Fields', {'fields': ('user_type',)}),
+        ('Custom Fields', {'fields': ('user_type', 'role',)}),
     )
+    readonly_fields = ('role',)
 
 
 @admin.register(RecruiterProfile)
