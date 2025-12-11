@@ -5,6 +5,7 @@ from .type_serializers import JobCategorySerializer, QuestionTypeSerializer
 from applicants.serializers import ApplicantListSerializer
 from applicants.models import OfficeLocation
 from django.db.models import Q
+from applicants.models import Applicant
 
 
 class OfficeMiniSerializer(serializers.ModelSerializer):
@@ -229,82 +230,29 @@ class InterviewSerializer(serializers.ModelSerializer):
 
 
 class InterviewCreateSerializer(serializers.ModelSerializer):
-    """Serializer for creating interviews"""
+    """Serializer for creating interviews with position_type PK"""
     
-    applicant_id = serializers.IntegerField(write_only=True)
-    position_type = serializers.CharField(required=False, allow_null=True)
-    job_position_id = serializers.IntegerField(required=False, allow_null=True)
+    applicant = serializers.PrimaryKeyRelatedField(queryset=Applicant.objects.all())
+    position_type = serializers.PrimaryKeyRelatedField(queryset=PositionType.objects.all())
     
     class Meta:
         model = Interview
-        fields = ['applicant_id', 'interview_type', 'position_type', 'job_position_id']
-    
-    def validate_applicant_id(self, value):
-        """Validate that applicant exists"""
-        from applicants.models import Applicant
-        try:
-            Applicant.objects.get(id=value)
-        except Applicant.DoesNotExist:
-            raise serializers.ValidationError("Applicant not found.")
-        return value
-    
-    def validate_position_type(self, value):
-        """Validate and convert position_type code to PositionType instance"""
-        if not value:
-            return None
-            
-        from .type_models import PositionType
-        
-        # If it's already an integer (ID), get the instance
-        if isinstance(value, int):
-            try:
-                return PositionType.objects.get(id=value, is_active=True)
-            except PositionType.DoesNotExist:
-                raise serializers.ValidationError(f"Position type with ID {value} not found.")
-        
-        # If it's a string (code), look it up by code
-        try:
-            return PositionType.objects.get(code=value, is_active=True)
-        except PositionType.DoesNotExist:
-            raise serializers.ValidationError(f"Position type '{value}' not found.")
-    
-    def validate_job_position_id(self, value):
-        if value is None:
-            return value
-        from .models import JobPosition
-        try:
-            return JobPosition.objects.get(id=value)
-        except JobPosition.DoesNotExist:
-            raise serializers.ValidationError(f"Job position with ID {value} not found.")
+        fields = ['applicant', 'interview_type', 'position_type']
     
     def create(self, validated_data):
-        """Create interview with pending status"""
-        from applicants.models import Applicant
-        applicant_id = validated_data.pop('applicant_id')
-        applicant = Applicant.objects.get(id=applicant_id)
-        job_position = validated_data.pop("job_position_id", None)
-        if job_position and job_position.category:
-            validated_data["position_type"] = job_position.category
-        
-        validated_data['applicant'] = applicant
         validated_data['status'] = 'pending'
-        
         interview = super().create(validated_data)
-        if job_position:
-            setattr(interview, "_job_position", job_position)
-            setattr(interview, "_job_position_subroles", job_position.subroles or [])
-        
         # Update applicant status
-        applicant.status = 'in_review'
-        applicant.save()
-        
-        # Create processing queue entry
+        applicant = validated_data.get('applicant')
+        if applicant:
+            applicant.status = 'in_review'
+            applicant.save(update_fields=["status"])
+        # Queue processing record
         from processing.models import ProcessingQueue
         ProcessingQueue.objects.create(
             interview=interview,
             status='queued'
         )
-        
         return interview
 
 

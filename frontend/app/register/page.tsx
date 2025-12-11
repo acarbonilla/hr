@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { applicantAPI, interviewAPI } from "@/lib/api";
+import { applicantAPI, interviewAPI, api } from "@/lib/api";
 import { useStore } from "@/store/useStore";
 import { UserPlus, Mail, Phone, User, Loader2, MapPin } from "lucide-react";
 import { getCurrentLocation, GeolocationData } from "@/lib/geolocation";
@@ -138,10 +138,22 @@ export default function RegisterPage() {
           console.log("Creating interview with position:", selectedPosition);
           console.log("Applicant ID:", applicant.id);
 
+          let positionTypeId: number | null = null;
+          try {
+            const posRes = await api.get("/job-categories/", { params: { code: selectedPosition } });
+            const first = posRes.data?.results?.[0] || posRes.data?.[0];
+            positionTypeId = first?.id || null;
+          } catch (err) {
+            console.warn("Failed to resolve position type ID, using code fallback");
+          }
+          if (!positionTypeId) {
+            throw new Error("Unable to resolve position type ID");
+          }
+
           const interviewResponse = await interviewAPI.createInterview({
-            applicant_id: applicant.id,
+            applicant: applicant.id,
             interview_type: "initial_ai",
-            position_type: selectedPosition,
+            position_type: positionTypeId,
           });
 
           console.log("Interview Response:", interviewResponse);

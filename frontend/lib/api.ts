@@ -89,11 +89,11 @@ export const applicantAPI = {
 
 export const interviewAPI = {
   // Create new interview
-  createInterview: (data: { applicant_id: number; interview_type: string; position_type?: string }) =>
+  createInterview: (data: { applicant: number; interview_type: string; position_type: number }) =>
     api.post("/interviews/", data),
 
   // Alias for createInterview
-  create: (data: { applicant_id: number; interview_type?: string; position_type?: string }) =>
+  create: (data: { applicant: number; interview_type?: string; position_type: number }) =>
     api.post("/interviews/", { ...data, interview_type: data.interview_type || "initial_ai" }),
 
   // Get interview details
@@ -120,6 +120,8 @@ export const interviewAPI = {
   // Get interview analysis
   getAnalysis: (id: number) => api.get(`/interviews/${id}/analysis/`),
 };
+
+export { api, API_BASE_URL };
 
 export const trainingAPI = {
   // Get all training modules

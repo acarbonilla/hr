@@ -2,7 +2,7 @@
 
 import React, { Suspense, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { applicantAPI, interviewAPI, questionAPI } from "@/lib/api";
+import { applicantAPI, interviewAPI, questionAPI, api } from "@/lib/api";
 import { useStore } from "@/store/useStore";
 import { Briefcase, Headphones, Monitor, TrendingUp, Users, Info, ArrowRight, Loader2 } from "lucide-react";
 
@@ -132,10 +132,15 @@ function PositionSelectPageInner() {
       }
 
       // Create interview for the applicant with position type
+      const posRes = await api.get("/job-categories/", { params: { code: selectedPosition } });
+      const first = posRes.data?.results?.[0] || posRes.data?.[0];
+      const positionTypeId = first?.id;
+      if (!positionTypeId) throw new Error("Position type not found");
+
       const interviewResponse = await interviewAPI.createInterview({
-        applicant_id: typeof appId === "string" ? parseInt(appId) : appId,
+        applicant: typeof appId === "string" ? parseInt(appId) : (appId as number),
         interview_type: "initial_ai",
-        position_type: selectedPosition,
+        position_type: positionTypeId,
       });
       const interview = interviewResponse.data.interview || interviewResponse.data;
 

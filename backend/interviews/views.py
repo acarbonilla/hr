@@ -55,6 +55,9 @@ class JobCategoryViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """Filter to active types only if requested"""
         queryset = super().get_queryset()
+        code = self.request.query_params.get('code')
+        if code:
+            queryset = queryset.filter(code=code)
         if self.action in ['list', 'retrieve']:
             return queryset.filter(is_active=True)
         active_only = self.request.query_params.get('active_only', 'false').lower() == 'true'
