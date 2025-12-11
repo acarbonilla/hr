@@ -2,7 +2,9 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from accounts.permissions import IsHR
+from accounts.permissions import IsHR, ApplicantOrHR
+from rest_framework.settings import api_settings
+from accounts.authentication import ApplicantTokenAuthentication
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
 
@@ -188,11 +190,15 @@ class InterviewViewSet(viewsets.ModelViewSet):
         return InterviewSerializer
 
     
+    authentication_classes = [ApplicantTokenAuthentication, *api_settings.DEFAULT_AUTHENTICATION_CLASSES]
+
     def get_permissions(self):
-        """Allow anyone to create/interact; restrict listing to HR"""
+        """Allow anyone to create/interact; restrict listing to HR; allow applicant or HR for interview detail/submit paths"""
         if self.action in ['list']:
             return [IsAuthenticated(), IsHR()]
-        if self.action in ['create', 'video_response', 'retrieve', 'submit', 'analysis']:
+        if self.action in ['retrieve', 'submit', 'analysis', 'video_response', 'complete']:
+            return [ApplicantOrHR()]
+        if self.action in ['create']:
             return [AllowAny()]
         return super().get_permissions()
     

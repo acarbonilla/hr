@@ -40,6 +40,9 @@ class ApplicantTokenAuthentication(BaseAuthentication):
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed("Applicant token expired")
         except jwt.InvalidTokenError:
+            # slight delay to reduce brute force attempts
+            import time
+            time.sleep(1)
             raise AuthenticationFailed("Invalid applicant token")
 
         if payload.get("type") != "applicant":

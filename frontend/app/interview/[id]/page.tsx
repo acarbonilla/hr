@@ -68,6 +68,10 @@ export default function InterviewPage() {
 
         // Fetch interview details
         const token = getApplicantToken();
+        if (!token) {
+          router.push("/interview-login?missing=true");
+          return;
+        }
         const interviewResponse = await interviewAPI.getInterview(interviewId, {
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });

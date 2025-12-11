@@ -83,4 +83,24 @@ class IsApplicantOnly(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         # applicant tokens set a non-User object (Applicant) with is_authenticated
-        return bool(user and getattr(user, "is_authenticated", False) and hasattr(user, "id") and not hasattr(user, "is_staff"))
+        return bool(user and getattr(user, "is_authenticated", False) and hasattr(user, "id") and not getattr(user, "is_staff", False))
+
+
+class ApplicantOrHR(BasePermission):
+    """
+    Allow either applicant token or HR/admin user.
+    """
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not user:
+            return False
+        if getattr(user, "is_authenticated", False) and hasattr(user, "id") and not getattr(user, "is_staff", False):
+            # applicant token-auth
+            return True
+        role = getattr(user, "normalized_role", getattr(user, "role", None))
+        return bool(
+            getattr(user, "is_staff", False)
+            or getattr(user, "is_superuser", False)
+            or role in ["hr", "admin", "superadmin"]
+        )

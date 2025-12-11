@@ -7,6 +7,7 @@ from .views import (
     QuestionTypeViewSet,
     JobPositionViewSet
 )
+from .magic_urls import MagicLoginView, RefreshApplicantTokenView, HRResendInterviewLinkView
 
 router = DefaultRouter()
 router.register(r'interviews', InterviewViewSet, basename='interview')
@@ -17,4 +18,7 @@ router.register(r'question-types', QuestionTypeViewSet, basename='question-type'
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('applicant/magic-login/<str:token>/', MagicLoginView.as_view(), name='magic-login'),
+    path('applicant/refresh-token/', RefreshApplicantTokenView.as_view(), name='refresh-applicant-token'),
+    path('hr/applicant/<int:applicant_id>/resend-link/', HRResendInterviewLinkView.as_view(), name='hr-resend-link'),
 ]
