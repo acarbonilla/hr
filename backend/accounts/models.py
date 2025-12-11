@@ -1,6 +1,12 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 
+ROLE_GROUP_MAP = {
+    "hr_manager": "HR Manager",
+    "hr_recruiter": "HR Recruiter",
+    "it_support": "IT Support",
+    "applicant": "Applicant",
+}
 
 class User(AbstractUser):
     """Custom User model extending Django's AbstractUser"""
@@ -41,6 +47,22 @@ class User(AbstractUser):
             'system_admin': 'superadmin',
         }
         return mapping.get(self.user_type, 'applicant')
+
+    def sync_role_group(self):
+        """Ensures user.role always matches the correct Django group."""
+        from django.contrib.auth.models import Group
+        group_name = ROLE_GROUP_MAP.get(self.role)
+
+        if not group_name:
+            return
+
+        group, _ = Group.objects.get_or_create(name=group_name)
+        self.groups.clear()
+        self.groups.add(group)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.sync_role_group()
 
 
 class RecruiterProfile(models.Model):
