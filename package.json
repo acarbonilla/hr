@@ -1,0 +1,7 @@
+{
+  "name": "hirenowpro-tools",
+  "private": true,
+  "scripts": {
+    "autopush": "node tools/autopush.js"
+  }
+}
