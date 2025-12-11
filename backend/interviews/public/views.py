@@ -7,6 +7,7 @@ from interviews.type_models import PositionType
 from interviews.type_serializers import JobCategorySerializer
 from interviews.models import JobPosition
 from applicants.models import Applicant
+from rest_framework import viewsets
 from .serializers import (
     PublicInterviewSerializer,
     PublicQuestionSerializer,
@@ -88,3 +89,21 @@ class PublicPositionTypeView(generics.GenericAPIView):
                     qs = PositionType.objects.filter(id=job_position.category_id)
         serializer = self.get_serializer(qs, many=True)
         return Response({"results": serializer.data})
+
+
+class PublicPositionTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+    serializer_class = JobCategorySerializer
+    queryset = PositionType.objects.all()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        position_code = self.request.query_params.get("position_code")
+        if position_code:
+            qs = qs.filter(code=position_code)
+            if not qs.exists():
+                job_position = JobPosition.objects.filter(code=position_code).select_related("category").first()
+                if job_position and job_position.category:
+                    qs = PositionType.objects.filter(id=job_position.category_id)
+        return qs

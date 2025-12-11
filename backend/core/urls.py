@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from core.api_public import public_router
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -27,6 +28,7 @@ urlpatterns = [
     path('api/', include('applicants.urls')),
     path('api/', include('interviews.urls')),
     path('api/public/', include('interviews.public.urls')),
+    path('api/public/', include(public_router.urls)),
     path('api/', include('results.urls')),
     path('api/', include('monitoring.urls')),
     path('api/training/', include('training.urls')),

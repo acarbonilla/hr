@@ -10,6 +10,11 @@ const api = axios.create({
   },
 });
 
+export const publicAPI = axios.create({
+  baseURL: `${API_BASE_URL}/public`,
+  timeout: 10000,
+});
+
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
@@ -42,6 +47,7 @@ api.interceptors.request.use(
         config.headers.Authorization = `Bearer ${token}`;
       }
     }
+    console.log("REQUEST:", config.url, config.headers?.Authorization);
     return config;
   },
   (error) => Promise.reject(error)
@@ -92,14 +98,14 @@ export const applicantAPI = {
 export const interviewAPI = {
   // Create new interview
   createInterview: (data: { applicant_id: number; interview_type: string; position_code: string }) =>
-    api.post("/public/interviews/", data),
+    publicAPI.post("/interviews/", data),
 
   // Alias for createInterview
   create: (data: { applicant: number; interview_type?: string; position_type: number }) =>
     api.post("/interviews/", { ...data, interview_type: data.interview_type || "initial_ai" }),
 
   // Get interview details
-  getInterview: (id: number) => api.get(`/public/interviews/${id}/`),
+  getInterview: (id: number) => publicAPI.get(`/interviews/${id}/`),
 
   // Upload video response (no immediate analysis)
   uploadVideoResponse: (interviewId: number, formData: FormData) => {
@@ -117,7 +123,7 @@ export const interviewAPI = {
   completeInterview: (id: number) => api.post(`/interviews/${id}/complete/`),
 
   // List interviews
-  listInterviews: (params?: any) => api.get("/public/interviews/", { params }),
+  listInterviews: (params?: any) => publicAPI.get("/interviews/", { params }),
 
   // Get interview analysis
   getAnalysis: (id: number) => api.get(`/interviews/${id}/analysis/`),
@@ -163,7 +169,7 @@ export const trainingAPI = {
 
 export const questionAPI = {
   // Get all active questions (with optional position and type filters)
-  getQuestions: (interviewId: number) => api.get(`/public/interviews/${interviewId}/questions/`),
+  getQuestions: (interviewId: number) => publicAPI.get(`/interviews/${interviewId}/questions/`),
 
   // Get single question
   getQuestion: (id: number) => api.get(`/questions/${id}/`),

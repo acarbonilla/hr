@@ -165,7 +165,7 @@ export default function RegisterPage() {
           console.log("DEBUG selectedPosition:", selectedPosition);
           console.log("DEBUG applicant:", applicant);
 
-          const posRes = await api.get("/public/position-types/", { params: { position_code: selectedPosition } });
+          const posRes = await publicAPI.get("/position-types/", { params: { position_code: selectedPosition } });
           const first = posRes.data?.results?.[0] || posRes.data?.[0];
           const positionTypeId = first?.id;
           console.log("DEBUG resolvedPositionType:", positionTypeId);
