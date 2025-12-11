@@ -5,6 +5,7 @@ from django.shortcuts import get_object_or_404
 from interviews.models import Interview, InterviewQuestion
 from interviews.type_models import PositionType
 from interviews.type_serializers import JobCategorySerializer
+from interviews.models import JobPosition
 from applicants.models import Applicant
 from .serializers import (
     PublicInterviewSerializer,
@@ -81,5 +82,9 @@ class PublicPositionTypeView(generics.GenericAPIView):
         qs = PositionType.objects.all()
         if position_code:
             qs = qs.filter(code=position_code)
+            if not qs.exists():
+                job_position = JobPosition.objects.filter(code=position_code).select_related("category").first()
+                if job_position and job_position.category:
+                    qs = PositionType.objects.filter(id=job_position.category_id)
         serializer = self.get_serializer(qs, many=True)
         return Response({"results": serializer.data})
