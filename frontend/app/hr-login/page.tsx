@@ -31,10 +31,13 @@ export default function HRLoginPage() {
         localStorage.removeItem("employee");
         localStorage.removeItem("hr_access");
         localStorage.removeItem("hr_refresh");
+        localStorage.removeItem("hr_authToken");
+        localStorage.removeItem("hr_refreshToken");
         localStorage.removeItem("refreshToken");
         localStorage.removeItem("refresh_token");
         localStorage.removeItem("applicant_access");
         localStorage.removeItem("applicant_refresh");
+        localStorage.removeItem("user");
       }
       setHRAuth(tokens, user);
 
