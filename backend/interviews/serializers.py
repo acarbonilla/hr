@@ -115,81 +115,67 @@ class InterviewQuestionWriteSerializer(serializers.ModelSerializer):
     Legacy fields (position_type, tags, order) are ignored or read-only.
     """
 
-    question_type_id = serializers.PrimaryKeyRelatedField(
-        source="question_type",
+    question_text = serializers.CharField(required=True)
+    question_type = serializers.PrimaryKeyRelatedField(
         queryset=QuestionType.objects.all(),
-        write_only=True,
-        required=False,
+        required=True,
     )
-    category_id = serializers.PrimaryKeyRelatedField(
-        source="category",
-        queryset=PositionType.objects.filter(is_active=True),
-        write_only=True,
-        required=False,
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=PositionType.objects.all(),
+        required=True,
     )
-    # Backward-compatible aliases (accept plain ints)
-    question_type = serializers.IntegerField(write_only=True, required=False)
-    category = serializers.IntegerField(write_only=True, required=False)
     competency = serializers.ChoiceField(choices=COMPETENCY_CHOICES, required=True)
-    order = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = InterviewQuestion
         fields = [
+            "id",
             "question_text",
-            "question_type_id",
-            "category_id",
             "question_type",
             "category",
             "competency",
-            "order",
         ]
+        read_only_fields = ["id"]
+
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            return super().to_internal_value(data)
+        if hasattr(data, "dict"):
+            mutable = data.dict()
+        else:
+            mutable = dict(data)
+        if "question_type" not in mutable and "question_type_id" in mutable:
+            mutable["question_type"] = mutable.get("question_type_id")
+        if "category" not in mutable and "category_id" in mutable:
+            mutable["category"] = mutable.get("category_id")
+        if "competency" in mutable:
+            mutable["competency"] = self._normalize_competency(mutable.get("competency"))
+        for key in ["position_type", "tags", "subroles", "order"]:
+            mutable.pop(key, None)
+        allowed = set(self.fields.keys())
+        sanitized = {key: value for key, value in mutable.items() if key in allowed}
+        return super().to_internal_value(sanitized)
+
+    def _normalize_competency(self, value):
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if not stripped:
+            return value
+        choice_map = {label.lower(): key for key, label in COMPETENCY_CHOICES}
+        if stripped in dict(COMPETENCY_CHOICES):
+            return stripped
+        lowered = stripped.lower()
+        if lowered in choice_map:
+            return choice_map[lowered]
+        return value
 
     def validate(self, attrs):
-        data = attrs.copy()
-        errors = {}
-
-        # Resolve question_type from either id field
-        qt = data.get("question_type")
-        qt_id = data.get("question_type_id")
-        if qt and not qt_id:
-            try:
-                data["question_type"] = QuestionType.objects.get(pk=qt)
-                data["question_type_id"] = data["question_type"]
-            except QuestionType.DoesNotExist:
-                errors["question_type"] = ["Invalid question_type."]
-        elif not qt_id and not qt:
-            errors["question_type"] = ["This field is required."]
-
-        # Resolve category (job category) from either id field
-        cat = data.get("category")
-        cat_id = data.get("category_id")
-        if cat and not cat_id:
-            try:
-                data["category"] = PositionType.objects.get(pk=cat)
-                data["category_id"] = data["category"]
-            except PositionType.DoesNotExist:
-                errors["category"] = ["Invalid category."]
-        elif not cat_id and not cat:
-            errors["category"] = ["This field is required."]
-
-        if errors:
-            raise serializers.ValidationError(errors)
-
-        # Normalize order
-        if "order" not in data or data.get("order") is None:
-            data["order"] = 0
-
         # Mirror category into position_type for backward compatibility
-        category_obj = data.get("category") or data.get("category_id")
-        if category_obj:
-            data["position_type"] = category_obj
-
-        # Remove alias ints to avoid assignment issues
-        data.pop("question_type", None)
-        data.pop("category", None)
-
-        return data
+        category = attrs.get("category") or getattr(self.instance, "category", None)
+        if category:
+            attrs["position_type"] = category
+        return attrs
 
 
 class AIAnalysisSerializer(serializers.ModelSerializer):
