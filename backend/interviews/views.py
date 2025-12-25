@@ -26,10 +26,12 @@ from .serializers import (
     JobPositionSerializer,
     PublicJobPositionSerializer,
     HRDecisionSerializer,
+    DecisionEmailSerializer,
 )
 from .type_serializers import JobCategorySerializer, QuestionTypeSerializer
 from .type_serializers import JobCategorySerializer as PositionTypeSerializer
 from .question_selection import select_questions_for_interview, select_questions_for_interview_with_metadata
+from services.email_service import send_decision_email
 
 
 class JobCategoryViewSet(viewsets.ModelViewSet):
@@ -579,7 +581,7 @@ class InterviewViewSet(viewsets.ModelViewSet):
             )
 
         reopen_review = bool(request.data.get("reopen_review"))
-        if result.hr_decision and not reopen_review:
+        if result.hr_decision and result.hr_decision != "hold" and not reopen_review:
             return Response(
                 {"detail": "HR decision already recorded. Provide reopen_review to update."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -638,6 +640,60 @@ class InterviewViewSet(viewsets.ModelViewSet):
                 "applicant_status": applicant.status,
                 "result_id": result.id,
                 "result_final_decision": result.final_decision,
+            }
+        )
+
+    @action(detail=True, methods=['post'], url_path='send-decision-email')
+    def send_decision_email(self, request, pk=None):
+        """
+        HR sends decision email to applicant.
+
+        POST /api/hr/interviews/{id}/send-decision-email/
+        Body: {
+            "final_decision": "PASS" | "REVIEW" | "FAIL",
+            "custom_message": "optional text"
+        }
+        """
+        interview = self.get_object()
+
+        if interview.email_sent:
+            return Response(
+                {"detail": "Decision email has already been sent."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = DecisionEmailSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        final_decision = serializer.validated_data["final_decision"]
+        custom_message = serializer.validated_data.get("custom_message")
+        include_feedback = serializer.validated_data.get("include_feedback", True)
+        feedback_override = serializer.validated_data.get("feedback_override")
+
+        interview.final_decision = final_decision
+        interview.decision_set_by = request.user
+        interview.decision_set_at = timezone.now()
+        interview.save(update_fields=["final_decision", "decision_set_by", "decision_set_at"])
+
+        try:
+            send_decision_email(
+                interview.id,
+                custom_message=custom_message,
+                sent_by=request.user,
+                include_feedback=include_feedback,
+                feedback_override=feedback_override,
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        interview.refresh_from_db(fields=["email_sent", "email_sent_at"])
+
+        return Response(
+            {
+                "message": "Decision email sent successfully.",
+                "interview_id": interview.id,
+                "final_decision": interview.final_decision,
+                "email_sent": interview.email_sent,
+                "email_sent_at": interview.email_sent_at,
             }
         )
     

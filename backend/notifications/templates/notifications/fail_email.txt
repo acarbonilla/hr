@@ -1,0 +1,15 @@
+Hello {{ applicant_name }},
+
+Thank you for taking the time to interview with us. After careful consideration, we will not be moving forward at this time.
+{% if position_code %}Role: {{ position_code }}{% endif %}
+
+We appreciate your interest in HireNowPro and wish you success in your job search.
+
+Developmental Feedback
+{{ feedback_summary }}
+{% for item in feedback_focus_items %}
+- {{ item }}
+{% endfor %}
+
+Best regards,
+HireNowPro HR Team

@@ -153,6 +153,31 @@ class InterviewResultViewSet(viewsets.ModelViewSet):
         
         # Get all video responses with questions
         video_responses = interview.video_responses.all().select_related('question', 'hr_reviewer', 'ai_analysis')
+        scores_by_competency = {}
+        for vr in video_responses:
+            score = vr.final_score
+            if score is None:
+                continue
+            competency = getattr(vr.question, "competency", None) or "communication"
+            bucket_total, bucket_count = scores_by_competency.get(competency, (0.0, 0))
+            scores_by_competency[competency] = (bucket_total + score, bucket_count + 1)
+
+        from interviews.scoring import compute_competency_scores
+
+        competency_score_data = compute_competency_scores(
+            scores_by_competency=scores_by_competency,
+            role_code=getattr(interview.position_type, "code", None),
+        )
+        review_data.update(
+            {
+                "raw_scores_per_competency": competency_score_data["raw_scores_per_competency"],
+                "weighted_scores_per_competency": competency_score_data["weighted_scores_per_competency"],
+                "final_weighted_score": competency_score_data["final_weighted_score"],
+                "weights_used": competency_score_data["weights_used"],
+                "role_profile": competency_score_data["role_profile"],
+                "ai_recommendation_explanation": competency_score_data["ai_recommendation_explanation"],
+            }
+        )
         
         for vr in video_responses:
             # Get AI assessment from AIAnalysis if available

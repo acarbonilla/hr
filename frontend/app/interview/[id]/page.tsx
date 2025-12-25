@@ -55,8 +55,6 @@ export default function InterviewPage() {
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [transitionCountdown, setTransitionCountdown] = useState(0);
   const [showInitialCountdown, setShowInitialCountdown] = useState(true);
   const [initialCountdown, setInitialCountdown] = useState(5);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -284,7 +282,7 @@ export default function InterviewPage() {
 
   // Speak question when it changes
   useEffect(() => {
-    if (!showInitialCountdown && !isTransitioning && questions[currentQuestionIndex]) {
+    if (!showInitialCountdown && questions[currentQuestionIndex]) {
       // Small delay before speaking to let UI settle
       const timer = setTimeout(() => {
         const currentQuestion = questions[currentQuestionIndex];
@@ -292,7 +290,7 @@ export default function InterviewPage() {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [currentQuestionIndex, showInitialCountdown, isTransitioning, questions]);
+  }, [currentQuestionIndex, showInitialCountdown, questions]);
 
   // Recording timer
   useEffect(() => {
@@ -395,23 +393,10 @@ export default function InterviewPage() {
       setRecordedChunks([]);
       setRecordingTime(0); // Reset recording time for next question
 
-      // Automatically advance to next question with countdown OR auto-submit if last
+      // Automatically advance to next question OR auto-submit if last
       if (!isLastQuestion) {
-        setIsTransitioning(true);
-        let countdown = 3; // 3 second countdown
-        setTransitionCountdown(countdown);
-
-        const countdownInterval = setInterval(() => {
-          countdown--;
-          setTransitionCountdown(countdown);
-
-          if (countdown <= 0) {
-            clearInterval(countdownInterval);
-            setIsTransitioning(false);
-            setSuccessMessage("");
-            nextQuestion();
-          }
-        }, 1000);
+        setSuccessMessage("");
+        nextQuestion();
       } else {
         // Last question - auto-submit after 3 seconds
         console.log("Last question answered! Total answered:", totalAnswered, "of", questions.length);
@@ -635,29 +620,6 @@ export default function InterviewPage() {
         </div>
       )}
 
-      {/* Transition Overlay */}
-      {isTransitioning && (
-        <div className="fixed inset-0 bg-linear-to-br from-green-500 to-blue-500 bg-opacity-95 z-50 flex items-center justify-center">
-          <div className="text-center text-white px-4">
-            {/* Countdown Circle */}
-            <div className="relative mb-8">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-40 h-40 bg-white bg-opacity-20 rounded-full animate-ping"></div>
-              </div>
-              <div className="relative flex items-center justify-center">
-                <div className="w-32 h-32 bg-white bg-opacity-30 rounded-full flex items-center justify-center backdrop-blur-sm">
-                  <span className="text-7xl font-bold">{transitionCountdown}</span>
-                </div>
-              </div>
-            </div>
-
-            <h2 className="text-4xl font-bold mb-4">Great Job! 🎉</h2>
-            <p className="text-xl mb-2">Moving to the next question...</p>
-            <p className="text-lg opacity-90">Take a deep breath and prepare yourself</p>
-          </div>
-        </div>
-      )}
-
       {/* Submitting Interview Modal removed – submit now redirects immediately to completion page */}
 
       <div className="max-w-6xl mx-auto">
@@ -851,10 +813,7 @@ export default function InterviewPage() {
 
           {/* Question Section */}
           <div className="bg-white rounded-lg shadow-md p-6">
-            <div
-              className={`mb-6 transition-all duration-500 ${isTransitioning ? "opacity-0 scale-95" : "opacity-100 scale-100"
-                }`}
-            >
+            <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-600">
                   Question {currentQuestionIndex + 1} of {questions.length}

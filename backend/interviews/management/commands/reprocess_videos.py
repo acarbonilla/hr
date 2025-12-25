@@ -71,10 +71,26 @@ class Command(BaseCommand):
 
                 # Analyze transcript
                 self.stdout.write("  Analyzing...")
+                role = video.interview.position_type if hasattr(video, "interview") else None
+                role_name = role.name if role else None
+                role_code = role.code if role else None
+                role_context = role.description_context or role.description if role else None
+                from interviews.scoring import get_role_prompt_context
+
+                prompt_context = get_role_prompt_context(role_code)
+                core_competencies = prompt_context.get("core_competencies") or None
+                role_profile = prompt_context.get("role_profile") or None
+
                 analysis_result = ai_service.analyze_transcript(
                     transcript_text=transcript,
                     question_text=video.question.question_text,
-                    question_type=video.question.question_type
+                    question_type=video.question.question_type,
+                    role_name=role_name,
+                    role_code=role_code,
+                    role_context=role_context,
+                    question_competency=video.question.competency,
+                    role_profile=role_profile,
+                    core_competencies=core_competencies,
                 )
 
                 # Delete old analysis if force=True

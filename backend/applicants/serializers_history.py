@@ -14,6 +14,7 @@ class VideoResponseHistorySerializer(serializers.ModelSerializer):
     question_text = serializers.CharField(source='question.question_text', read_only=True)
     question_type = serializers.CharField(source='question.question_type.name', read_only=True)
     ai_analysis_summary = serializers.SerializerMethodField()
+    video_url = serializers.SerializerMethodField()
     
     class Meta:
         model = VideoResponse
@@ -22,6 +23,7 @@ class VideoResponseHistorySerializer(serializers.ModelSerializer):
             'question_text',
             'question_type',
             'video_file_path',
+            'video_url',
             'transcript',
             'ai_score',
             'ai_analysis_summary',
@@ -32,6 +34,15 @@ class VideoResponseHistorySerializer(serializers.ModelSerializer):
             'status'
         ]
     
+    def get_video_url(self, obj):
+        """Get video file URL"""
+        if obj.video_file_path:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.video_file_path.url)
+            return obj.video_file_path.url
+        return None
+
     def get_ai_analysis_summary(self, obj):
         """Get AI analysis summary if available"""
         if hasattr(obj, 'ai_analysis') and obj.ai_analysis:
@@ -230,7 +241,7 @@ class ApplicantDetailHistorySerializer(serializers.ModelSerializer):
             interview = obj.interviews.first()
             if interview:
                 video_responses = interview.video_responses.all().select_related('question', 'hr_reviewer', 'ai_analysis')
-                return VideoResponseHistorySerializer(video_responses, many=True).data
+                return VideoResponseHistorySerializer(video_responses, many=True, context=self.context).data
         except:
             pass
         return []

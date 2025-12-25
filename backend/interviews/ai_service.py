@@ -60,7 +60,18 @@ class AIAnalysisService:
             # Don't fail the operation if logging fails
             print(f"Warning: Failed to log token usage: {e}")
     
-    def analyze_transcript(self, transcript_text: str, question_text: str, question_type: str) -> Dict[str, Any]:
+    def analyze_transcript(
+        self,
+        transcript_text: str,
+        question_text: str,
+        question_type: str,
+        role_name: str | None = None,
+        role_code: str | None = None,
+        role_context: str | None = None,
+        question_competency: str | None = None,
+        role_profile: str | None = None,
+        core_competencies: str | None = None,
+    ) -> Dict[str, Any]:
         """
         Analyze interview transcript using OpenAI GPT-4
         
@@ -112,10 +123,18 @@ IMPORTANT RULES:
 - Penalize vague, rambling, or off-topic answers.
 - If the response lacks clarity or depth, score accordingly.
 - Be consistent and conservative in scoring.
+- For role-specific evaluation, prioritize role-critical competencies.
+- Do not over-penalize non-core competencies unless they directly impact problem explanation or task performance.
 
 Interview Context:
+- Role: {role_name or "N/A"}
+- Role Code: {role_code or "N/A"}
+- Role Focus: {role_context or "N/A"}
+- Role Profile: {role_profile or "N/A"}
+- Core Competencies for this role: {core_competencies or "N/A"}
 - Question: {question_text}
 - Question Type: {question_type}
+- Question Competency: {question_competency or "N/A"}
 
 Candidate Response (verbatim transcript):
 \"\"\"
@@ -470,7 +489,16 @@ Do NOT include explanations outside JSON.
                 except:
                     pass
     
-    def batch_analyze_transcripts(self, transcripts_data: list, interview_id: int = None) -> list:
+    def batch_analyze_transcripts(
+        self,
+        transcripts_data: list,
+        interview_id: int | None = None,
+        role_name: str | None = None,
+        role_code: str | None = None,
+        role_context: str | None = None,
+        role_profile: str | None = None,
+        core_competencies: str | None = None,
+    ) -> list:
         """
         Analyze multiple transcripts in a SINGLE API call for maximum speed
         OPTIMIZED: 5x faster than individual calls
@@ -489,8 +517,19 @@ Do NOT include explanations outside JSON.
         import json
         
         # Build batch prompt with all questions
-        batch_prompt = """You are an expert HR interviewer analyzing multiple video interview responses.
+        batch_prompt = f"""You are an expert HR interviewer analyzing multiple video interview responses.
 Analyze ALL responses and return a JSON array with results for each in order.
+
+Role Context:
+- Role: {role_name or "N/A"}
+- Role Code: {role_code or "N/A"}
+- Role Focus: {role_context or "N/A"}
+- Role Profile: {role_profile or "N/A"}
+- Core Competencies for this role: {core_competencies or "N/A"}
+
+Role-aware scoring rules:
+- Prioritize role-critical competencies in your judgment.
+- Do not over-penalize non-core competencies unless they directly affect task performance.
 
 For each response, provide scores (0-100) for:
 - sentiment_score: Emotional tone and enthusiasm
@@ -509,7 +548,8 @@ For each response, provide scores (0-100) for:
 === RESPONSE {i} ===
 Question: {data['question_text']}
 Type: {data['question_type']}
-Answer: {data['transcript']}
+Competency: {data.get('question_competency', 'N/A')}
+Answer: {data.get('transcript', data.get('transcript_text', ''))}
 
 """
         
@@ -563,11 +603,20 @@ Return ONLY a JSON array with {len(transcripts_data)} objects, one for each resp
             if len(analyses) != len(transcripts_data):
                 print(f"⚠️ Expected {len(transcripts_data)} results, got {len(analyses)}")
                 # Fall back to individual analysis if batch fails
-                return [self.analyze_transcript(
-                    d['transcript_text'], 
-                    d['question_text'], 
-                    d['question_type']
-                ) for d in transcripts_data]
+                return [
+                    self.analyze_transcript(
+                        d.get('transcript_text') or d.get('transcript', ''),
+                        d.get('question_text', ''),
+                        d.get('question_type', ''),
+                        role_name=role_name,
+                        role_code=role_code,
+                        role_context=role_context,
+                        question_competency=d.get('question_competency'),
+                        role_profile=role_profile,
+                        core_competencies=core_competencies,
+                    )
+                    for d in transcripts_data
+                ]
             
             return analyses
             
@@ -586,13 +635,31 @@ Return ONLY a JSON array with {len(transcripts_data)} objects, one for each resp
             
             print(f"❌ Batch analysis failed: {e}. Falling back to individual analysis...")
             # Fallback: analyze individually
-            return [self.analyze_transcript(
-                d['transcript_text'], 
-                d['question_text'], 
-                d['question_type']
-            ) for d in transcripts_data]
+            return [
+                self.analyze_transcript(
+                    d.get('transcript_text') or d.get('transcript', ''),
+                    d.get('question_text', ''),
+                    d.get('question_type', ''),
+                    role_name=role_name,
+                    role_code=role_code,
+                    role_context=role_context,
+                    question_competency=d.get('question_competency'),
+                    role_profile=role_profile,
+                    core_competencies=core_competencies,
+                )
+                for d in transcripts_data
+            ]
     
-    def batch_transcribe_and_analyze(self, video_responses_data: list, interview_id: int = None) -> list:
+    def batch_transcribe_and_analyze(
+        self,
+        video_responses_data: list,
+        interview_id: int | None = None,
+        role_name: str | None = None,
+        role_code: str | None = None,
+        role_context: str | None = None,
+        role_profile: str | None = None,
+        core_competencies: str | None = None,
+    ) -> list:
         """
         Process multiple videos with OPTIMIZED parallel transcription + batch analysis
         ULTRA-FAST: Transcribe in parallel, then analyze all in ONE API call
@@ -663,7 +730,15 @@ Return ONLY a JSON array with {len(transcripts_data)} objects, one for each resp
         
         if successful_transcripts:
             # Analyze ALL transcripts in a single API call
-            analyses = self.batch_analyze_transcripts(successful_transcripts, interview_id=interview_id)
+            analyses = self.batch_analyze_transcripts(
+                successful_transcripts,
+                interview_id=interview_id,
+                role_name=role_name,
+                role_code=role_code,
+                role_context=role_context,
+                role_profile=role_profile,
+                core_competencies=core_competencies,
+            )
             analyze_elapsed = time.time() - analyze_start
             print(f"✅ Phase 2 complete in {analyze_elapsed:.2f}s")
             

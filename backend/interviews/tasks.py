@@ -95,13 +95,25 @@ def process_complete_interview(self, interview_id):
                     vr.transcript = ""
                     vr.save()
         
+        role = interview.position_type
+        role_name = role.name if role else None
+        role_code = role.code if role else None
+        role_context = role.description_context or role.description if role else None
+        from interviews.scoring import get_role_prompt_context
+
+        prompt_context = get_role_prompt_context(role_code)
+        core_competencies = prompt_context.get("core_competencies") or None
+        role_profile = prompt_context.get("role_profile") or None
+        role_profile = prompt_context.get("role_profile") or None
+
         # Prepare data for BATCH LLM ANALYSIS (transcripts already stored)
         transcripts_data = [
             {
                 'video_id': vr.id,
                 'transcript': vr.transcript,
                 'question_text': vr.question.question_text,
-                'question_type': vr.question.question_type.name if vr.question.question_type else 'general'
+                'question_type': vr.question.question_type.name if vr.question.question_type else 'general',
+                'question_competency': vr.question.competency,
             }
             for vr in video_responses
         ]
@@ -109,7 +121,15 @@ def process_complete_interview(self, interview_id):
         # Analyze all transcripts in ONE API call
         logger.info(f"Running batch LLM analysis for {len(transcripts_data)} transcripts...")
         ai_service = get_ai_service()
-        analyses = ai_service.batch_analyze_transcripts(transcripts_data, interview_id=interview.id)
+        analyses = ai_service.batch_analyze_transcripts(
+            transcripts_data,
+            interview_id=interview.id,
+            role_name=role_name,
+            role_code=role_code,
+            role_context=role_context,
+            role_profile=role_profile,
+            core_competencies=core_competencies,
+        )
         
         # Save LLM analysis results to database
         for video_response, analysis_result in zip(video_responses, analyses):
@@ -280,10 +300,25 @@ def analyze_single_video(self, video_response_id):
         
         # Step 3, 4, 5, 6: Analyze transcript
         logger.info("Analyzing transcript...")
+        role = video_response.interview.position_type if hasattr(video_response, "interview") else None
+        role_name = role.name if role else None
+        role_code = role.code if role else None
+        role_context = role.description_context or role.description if role else None
+        from interviews.scoring import get_role_prompt_context
+
+        prompt_context = get_role_prompt_context(role_code)
+        core_competencies = prompt_context.get("core_competencies") or None
+
         analysis_result = ai_service.analyze_transcript(
             transcript_text=transcript,
             question_text=video_response.question.question_text,
-            question_type=video_response.question.question_type
+            question_type=video_response.question.question_type,
+            role_name=role_name,
+            role_code=role_code,
+            role_context=role_context,
+            question_competency=video_response.question.competency,
+            role_profile=role_profile,
+            core_competencies=core_competencies,
         )
         logger.info(f"Analysis complete. Score: {analysis_result.get('overall_score')}")
         
@@ -371,10 +406,10 @@ def calculate_interview_score(interview_id):
         logger.warning(f"No video responses found for interview {interview_id}")
         return None
     
-    # Calculate average score (using final_score which includes HR overrides)
-    total_score = 0
+    # Aggregate by competency (using final_score which includes HR overrides)
     total_weight = 0
     technical_issues_count = 0
+    scores_by_competency = {}
     
     for video_response in video_responses:
         # Use final_score property which returns HR override if exists, else AI score
@@ -386,10 +421,11 @@ def calculate_interview_score(interview_id):
             logger.warning(f"Video {video_response.id} has technical issue (no audio), excluding from score")
             continue
         
-        weight = 1.0  # Equal weight for now, can be customized per question
-        
-        total_score += score * weight
-        total_weight += weight
+        total_weight += 1.0
+
+        competency = getattr(video_response.question, "competency", None) or "communication"
+        bucket_total, bucket_count = scores_by_competency.get(competency, (0.0, 0))
+        scores_by_competency[competency] = (bucket_total + score, bucket_count + 1)
     
     # If all videos have technical issues, return special status
     if total_weight == 0:
@@ -399,10 +435,22 @@ def calculate_interview_score(interview_id):
             'recommendation': 'technical_issue',
             'total_responses': video_responses.count(),
             'technical_issues_count': technical_issues_count,
-            'all_technical_issues': True
+            'all_technical_issues': True,
+            'raw_scores_per_competency': {},
+            'weighted_scores_per_competency': {},
+            'final_weighted_score': 0,
+            'weights_used': {},
+            'role_profile': '',
+            'ai_recommendation_explanation': '',
         }
     
-    overall_score = total_score / total_weight if total_weight > 0 else 0
+    from interviews.scoring import compute_competency_scores
+
+    competency_score_data = compute_competency_scores(
+        scores_by_competency=scores_by_competency,
+        role_code=getattr(interview.position_type, "code", None),
+    )
+    overall_score = competency_score_data["final_weighted_score"] if total_weight > 0 else 0
     
     # Determine recommendation
     if overall_score >= 70:
@@ -421,7 +469,13 @@ def calculate_interview_score(interview_id):
         'recommendation': recommendation,
         'total_responses': video_responses.count(),
         'technical_issues_count': technical_issues_count,
-        'all_technical_issues': False
+        'all_technical_issues': False,
+        'raw_scores_per_competency': competency_score_data["raw_scores_per_competency"],
+        'weighted_scores_per_competency': competency_score_data["weighted_scores_per_competency"],
+        'final_weighted_score': competency_score_data["final_weighted_score"],
+        'weights_used': competency_score_data["weights_used"],
+        'role_profile': competency_score_data["role_profile"],
+        'ai_recommendation_explanation': competency_score_data["ai_recommendation_explanation"],
     }
 
 

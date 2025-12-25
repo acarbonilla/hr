@@ -411,7 +411,7 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         Includes all videos, transcripts, AI analysis, and processing history
         """
         applicant = self.get_object()
-        serializer = ApplicantDetailHistorySerializer(applicant)
+        serializer = ApplicantDetailHistorySerializer(applicant, context={"request": request})
         return Response(serializer.data)
 
 

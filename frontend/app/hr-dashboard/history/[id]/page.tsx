@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
 import { getHRToken } from "@/lib/auth-hr";
+import { resolveVideoUrl } from "@/lib/media";
 import VideoPlayer from "@/components/VideoPlayer";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -14,6 +15,7 @@ interface VideoResponse {
   question_text: string;
   question_type: string;
   video_file_path: string;
+  video_url?: string | null;
   transcript: string;
   ai_score: number;
   ai_analysis_summary: string;
@@ -424,7 +426,7 @@ export default function ApplicantDetailHistoryPage() {
               {/* Video */}
               <div className="bg-white border-2 border-gray-200 rounded-xl p-6">
                 <h3 className="text-lg font-bold text-gray-900 mb-4">Video Response</h3>
-                <VideoPlayer src={`http://localhost:8000${selectedVideo.video_file_path}`} />
+                <VideoPlayer src={resolveVideoUrl(selectedVideo.video_url || selectedVideo.video_file_path)} />
               </div>
 
               {/* Question */}

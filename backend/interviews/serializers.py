@@ -310,6 +310,23 @@ class HRDecisionSerializer(serializers.Serializer):
         return attrs
 
 
+class DecisionEmailSerializer(serializers.Serializer):
+    """Serializer for HR decision email sending"""
+
+    final_decision = serializers.ChoiceField(
+        choices=["PASS", "REVIEW", "FAIL"],
+        required=True,
+    )
+    custom_message = serializers.CharField(required=False, allow_blank=True)
+    include_feedback = serializers.BooleanField(required=False, default=True)
+    feedback_override = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_final_decision(self, value):
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
+
+
 class InterviewSerializer(serializers.ModelSerializer):
     """Serializer for interview model"""
     
@@ -331,6 +348,10 @@ class InterviewSerializer(serializers.ModelSerializer):
             'hr_decision',
             'hr_decision_reason',
             'hr_decision_at',
+            'final_decision',
+            'decision_set_at',
+            'email_sent',
+            'email_sent_at',
             'created_at',
             'submission_date',
             'completed_at',
@@ -350,7 +371,11 @@ class InterviewSerializer(serializers.ModelSerializer):
             'authenticity_status',
             'hr_decision',
             'hr_decision_reason',
-            'hr_decision_at'
+            'hr_decision_at',
+            'final_decision',
+            'decision_set_at',
+            'email_sent',
+            'email_sent_at',
         ]
     
     def get_position_type(self, obj):
@@ -427,6 +452,12 @@ class InterviewAnalysisSerializer(serializers.Serializer):
     confidence_score = serializers.FloatField()
     speech_clarity_score = serializers.FloatField()
     content_relevance_score = serializers.FloatField()
+    raw_scores_per_competency = serializers.DictField()
+    weighted_scores_per_competency = serializers.DictField()
+    final_weighted_score = serializers.FloatField()
+    weights_used = serializers.DictField()
+    role_profile = serializers.CharField()
+    ai_recommendation_explanation = serializers.CharField()
     total_questions = serializers.IntegerField()
     answered_questions = serializers.IntegerField()
     recommendation = serializers.CharField()
@@ -443,6 +474,7 @@ class InterviewAnalysisSerializer(serializers.Serializer):
         total_clarity = 0
         total_content = 0
         count = 0
+        scores_by_competency = {}
         
         for response in video_responses:
             if hasattr(response, 'ai_analysis'):
@@ -453,6 +485,11 @@ class InterviewAnalysisSerializer(serializers.Serializer):
                 total_clarity += ai.speech_clarity_score
                 total_content += ai.content_relevance_score
                 count += 1
+            score = response.final_score
+            if score is not None:
+                competency = getattr(response.question, "competency", None) or "communication"
+                bucket_total, bucket_count = scores_by_competency.get(competency, (0.0, 0))
+                scores_by_competency[competency] = (bucket_total + score, bucket_count + 1)
         
         if count > 0:
             avg_overall = total_overall / count
@@ -463,10 +500,19 @@ class InterviewAnalysisSerializer(serializers.Serializer):
         else:
             avg_overall = avg_sentiment = avg_confidence = avg_clarity = avg_content = 0
         
-        # Determine recommendation based on overall score
-        if avg_overall >= 70:
+        from interviews.scoring import compute_competency_scores
+
+        competency_score_data = compute_competency_scores(
+            scores_by_competency=scores_by_competency,
+            role_code=getattr(instance.position_type, "code", None),
+        )
+
+        final_weighted_score = competency_score_data["final_weighted_score"]
+
+        # Determine recommendation based on weighted score
+        if final_weighted_score >= 70:
             recommendation = 'pass'
-        elif avg_overall >= 50:
+        elif final_weighted_score >= 50:
             recommendation = 'review'
         else:
             recommendation = 'fail'
@@ -477,11 +523,17 @@ class InterviewAnalysisSerializer(serializers.Serializer):
         return {
             'interview_id': instance.id,
             'applicant_name': instance.applicant.full_name,
-            'overall_score': round(avg_overall, 2),
+            'overall_score': round(final_weighted_score, 2),
             'sentiment_score': round(avg_sentiment, 2),
             'confidence_score': round(avg_confidence, 2),
             'speech_clarity_score': round(avg_clarity, 2),
             'content_relevance_score': round(avg_content, 2),
+            'raw_scores_per_competency': competency_score_data["raw_scores_per_competency"],
+            'weighted_scores_per_competency': competency_score_data["weighted_scores_per_competency"],
+            'final_weighted_score': round(final_weighted_score, 2),
+            'weights_used': competency_score_data["weights_used"],
+            'role_profile': competency_score_data["role_profile"],
+            'ai_recommendation_explanation': competency_score_data["ai_recommendation_explanation"],
             'total_questions': answered_count,
             'answered_questions': answered_count,
             'recommendation': recommendation,

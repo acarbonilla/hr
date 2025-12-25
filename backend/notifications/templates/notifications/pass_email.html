@@ -1,0 +1,24 @@
+<p>Hello {{ applicant_name }},</p>
+
+<p>Thank you for completing the interview process. We are pleased to let you know that you have passed this stage.</p>
+{% if position_code %}<p>Role: {{ position_code }}</p>{% endif %}
+
+<p><strong>Next steps:</strong></p>
+<ul>
+  <li>Our HR team will contact you shortly with scheduling details.</li>
+  <li>Please keep an eye on your email and phone for updates.</li>
+</ul>
+
+<p>We appreciate your time and interest in HireNowPro.</p>
+
+<p><strong>Developmental Feedback</strong></p>
+<p>{{ feedback_summary }}</p>
+{% if feedback_focus_items %}
+<ul>
+  {% for item in feedback_focus_items %}
+  <li>{{ item }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<p>Best regards,<br>HireNowPro HR Team</p>

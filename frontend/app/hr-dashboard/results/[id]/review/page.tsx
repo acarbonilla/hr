@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
 import { getHRToken } from "@/lib/auth-hr";
+import { resolveVideoUrl } from "@/lib/media";
 import VideoPlayer from "@/components/VideoPlayer";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
@@ -21,6 +22,7 @@ interface VideoResponse {
   id: number;
   question: Question;
   video_file: string | null;
+  video_url?: string | null;
   transcript: string | null;
   ai_score: number;
   ai_assessment: string | null;
@@ -40,6 +42,7 @@ interface VideoResponse {
 interface ReviewData {
   result_id: number;
   interview_id: number;
+  interview_status?: string | null;
   applicant: {
     id: number;
     full_name: string;
@@ -58,6 +61,8 @@ interface ReviewData {
   final_decision?: "hired" | "rejected" | null;
   final_decision_date?: string | null;
   final_decision_notes?: string | null;
+  email_sent?: boolean;
+  email_sent_at?: string | null;
   created_at: string;
   video_responses?: VideoResponse[];
 }
@@ -98,6 +103,8 @@ export default function ReviewPage() {
   const [decisionNotes, setDecisionNotes] = useState("");
   const [holdUntil, setHoldUntil] = useState("");
   const [decisionError, setDecisionError] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailError, setEmailError] = useState("");
   const [viewedQuestions, setViewedQuestions] = useState<number[]>([]);
 
   // FETCH DATA --------------------------------------------------------------
@@ -131,7 +138,20 @@ export default function ReviewPage() {
       const summary: ReviewData = summaryRes.data;
       const details = detailsRes.data || {};
 
-      const merged = { ...summary, ...details };
+      let interviewMeta: { email_sent?: boolean; email_sent_at?: string | null; interview_status?: string | null } = {};
+      if (summary?.interview_id) {
+        const interviewRes = await axios.get(`${API_BASE_URL}/hr/interviews/${summary.interview_id}/`, {
+          headers,
+          timeout: 10000,
+        });
+        interviewMeta = {
+          email_sent: interviewRes.data?.email_sent ?? false,
+          email_sent_at: interviewRes.data?.email_sent_at ?? null,
+          interview_status: interviewRes.data?.status ?? null,
+        };
+      }
+
+      const merged = { ...summary, ...details, ...interviewMeta };
       setReviewData(merged);
       const videos = details.video_responses || [];
       setSelectedVideo(videos.length ? videos[0] : null);
@@ -269,6 +289,62 @@ export default function ReviewPage() {
     }
   };
 
+  // SEND DECISION EMAIL --------------------------------------------------------------
+
+  const handleSendDecisionEmail = async () => {
+    if (!reviewData || emailSending) return;
+
+    const confirmSend = window.confirm("Send interview result to applicant? This cannot be undone.");
+    if (!confirmSend) return;
+
+    if (!reviewData.interview_id) {
+      setEmailError("Missing interview ID.");
+      return;
+    }
+
+    const decision = effectiveDecision;
+    let finalDecision: "PASS" | "REVIEW" | "FAIL" | null = null;
+    if (decision === "hire") finalDecision = "PASS";
+    if (decision === "hold") finalDecision = "REVIEW";
+    if (decision === "reject") finalDecision = "FAIL";
+
+    if (!finalDecision) {
+      setEmailError("Interview decision is not finalized.");
+      return;
+    }
+
+    setEmailSending(true);
+    setEmailError("");
+
+    try {
+      const token = getHRToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+
+      await axios.post(
+        `${API_BASE_URL}/hr/interviews/${reviewData.interview_id}/send-decision-email/`,
+        {
+          final_decision: finalDecision,
+        },
+        { headers }
+      );
+
+      alert("Result email sent successfully");
+      setReviewData((prev) =>
+        prev
+          ? {
+              ...prev,
+              email_sent: true,
+              email_sent_at: new Date().toISOString(),
+            }
+          : prev
+      );
+    } catch (err: any) {
+      setEmailError(err.response?.data?.detail || "Failed to send decision email");
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
   // COLOR HELPERS --------------------------------------------------------------
 
   const getScoreColor = (score: number) => {
@@ -363,7 +439,9 @@ export default function ReviewPage() {
   const isDecisionFinal = effectiveDecision === "hire" || effectiveDecision === "reject" || effectiveDecision === "hold";
   const aiOverallScore = reviewData.ai_overall_score ?? null;
   const hrAdjustedScore = reviewData.overall_score ?? null;
-  const isDecisionLocked = !!reviewData.hr_decision || !!reviewData.final_decision;
+  const isHoldDecision = reviewData.hr_decision === "hold";
+  const isDecisionLocked =
+    (!!reviewData.hr_decision && reviewData.hr_decision !== "hold") || !!reviewData.final_decision;
   const trimmedComment = decisionNotes.trim();
   const commentRequired = decisionType === "hold";
   const commentValid = !commentRequired || trimmedComment.length > 0;
@@ -376,6 +454,8 @@ export default function ReviewPage() {
   const totalQuestions = reviewData.video_responses?.length ?? 0;
   const reviewedCount = viewedQuestions.length;
   const hasUnreviewed = totalQuestions > 0 && reviewedCount < totalQuestions;
+  const emailSent = !!reviewData.email_sent;
+  const canSendEmail = isDecisionFinal && !emailSent && !emailSending;
 
   const openDecisionModal = () => {
     if (!canFinalize) return;
@@ -533,11 +613,9 @@ export default function ReviewPage() {
               <div className="bg-white p-6 shadow border rounded-xl">
                 <h3 className="text-lg font-semibold mb-4">Video</h3>
 
-                {selectedVideo.video_file ? (
+                {(selectedVideo.video_url || selectedVideo.video_file) ? (
                   <VideoPlayer
-                    src={`${process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") || "http://localhost:8000"}${
-                      selectedVideo.video_file
-                    }`}
+                    src={resolveVideoUrl(selectedVideo.video_url || selectedVideo.video_file)}
                     className="w-full aspect-video"
                   />
                 ) : (
@@ -895,6 +973,32 @@ export default function ReviewPage() {
                 Decision is locked. Reopen review to make changes.
               </p>
             )}
+            {!isDecisionLocked && isHoldDecision && (
+              <p className="text-xs text-blue-600">
+                Decision is on hold and can be updated.
+              </p>
+            )}
+          </div>
+
+          <div className="pt-4 border-t border-amber-200">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSendDecisionEmail}
+                disabled={!canSendEmail}
+                className={`px-4 py-2 rounded-lg text-white font-semibold ${
+                  canSendEmail ? "bg-green-600 hover:bg-green-700" : "bg-gray-300 cursor-not-allowed"
+                }`}
+              >
+                {emailSending ? "Sending..." : "Send Result to Applicant"}
+              </button>
+              {emailSent && (
+                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800">
+                  Email Sent
+                </span>
+              )}
+            </div>
+            {emailError && <p className="mt-2 text-xs text-red-600">{emailError}</p>}
           </div>
         </div>
       </div>

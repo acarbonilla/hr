@@ -1,5 +1,7 @@
+from django.conf import settings
 from django.db import models
 from applicants.models import Applicant
+from interviews.models import Interview
 
 
 class EmailTemplate(models.Model):
@@ -64,3 +66,28 @@ class Notification(models.Model):
     
     def __str__(self):
         return f"{self.get_notification_type_display()} to {self.applicant.full_name} - {self.status}"
+
+
+class DecisionEmailLog(models.Model):
+    """Audit log for HR-sent decision emails"""
+
+    interview = models.ForeignKey(Interview, on_delete=models.CASCADE, related_name='decision_email_logs')
+    applicant = models.ForeignKey(Applicant, on_delete=models.CASCADE, related_name='decision_email_logs')
+    decision = models.CharField(max_length=10)
+    email_sent_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='decision_email_logs',
+    )
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'decision_email_logs'
+        verbose_name = 'Decision Email Log'
+        verbose_name_plural = 'Decision Email Logs'
+        ordering = ['-sent_at']
+
+    def __str__(self):
+        return f"Decision email {self.decision} for {self.applicant.full_name} at {self.sent_at}"

@@ -1,0 +1,19 @@
+Hello {{ applicant_name }},
+
+Thank you for completing the interview process. We are pleased to let you know that you have passed this stage.
+{% if position_code %}Role: {{ position_code }}{% endif %}
+
+Next steps:
+- Our HR team will contact you shortly with scheduling details.
+- Please keep an eye on your email and phone for updates.
+
+We appreciate your time and interest in HireNowPro.
+
+Developmental Feedback
+{{ feedback_summary }}
+{% for item in feedback_focus_items %}
+- {{ item }}
+{% endfor %}
+
+Best regards,
+HireNowPro HR Team

@@ -1,0 +1,17 @@
+Hello {{ applicant_name }},
+
+Thank you for completing your interview. Your application is currently under review by our HR team.
+{% if position_code %}Role: {{ position_code }}{% endif %}
+
+We will reach out with an update as soon as the review is complete.
+
+Thank you for your patience and interest in HireNowPro.
+
+Developmental Feedback
+{{ feedback_summary }}
+{% for item in feedback_focus_items %}
+- {{ item }}
+{% endfor %}
+
+Best regards,
+HireNowPro HR Team

@@ -85,6 +85,11 @@ class Interview(models.Model):
         ('reject', 'Reject'),
         ('hold', 'Hold'),
     ]
+    FINAL_DECISION_CHOICES = [
+        ('pass', 'Pass'),
+        ('review', 'Review'),
+        ('fail', 'Fail'),
+    ]
     
     applicant = models.ForeignKey(Applicant, on_delete=models.CASCADE, related_name='interviews')
     interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPE_CHOICES, default='initial_ai')
@@ -148,6 +153,35 @@ class Interview(models.Model):
         null=True,
         blank=True,
         help_text="Timestamp when HR recorded the decision"
+    )
+    final_decision = models.CharField(
+        max_length=10,
+        choices=FINAL_DECISION_CHOICES,
+        null=True,
+        blank=True,
+        help_text="HR decision outcome for applicant notification (pass/review/fail)"
+    )
+    decision_set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="interview_decisions",
+        help_text="HR user who set the final decision"
+    )
+    decision_set_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when HR set the final decision"
+    )
+    email_sent = models.BooleanField(
+        default=False,
+        help_text="Whether the decision email has been sent"
+    )
+    email_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when decision email was sent"
     )
     selected_question_ids = models.JSONField(
         default=list,
