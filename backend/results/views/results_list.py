@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from django.utils import timezone
+from django.db.models import Q
 from django.utils.dateparse import parse_date
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -70,11 +71,14 @@ class InterviewResultList(APIView):
         if not include_older:
             qs = qs.filter(result_date__gte=review_cutoff)
 
+        pending_decisions = Q(hr_decision__isnull=True) | Q(
+            hr_decision__in=["pending_hr_review", "pending", "on_hold", "hold"]
+        )
         if hr_decision_filter:
             if hr_decision_filter == "pending":
-                qs = qs.filter(hr_decision__isnull=True)
+                qs = qs.filter(pending_decisions, interview__status="completed")
             elif hr_decision_filter == "reviewed":
-                qs = qs.filter(hr_decision__isnull=False)
+                qs = qs.filter(hr_decision__in=["hire", "reject"])
             elif hr_decision_filter in {"hire", "reject", "hold"}:
                 qs = qs.filter(hr_decision=hr_decision_filter)
 
@@ -146,11 +150,11 @@ class InterviewResultList(APIView):
             pending_qs = pending_qs.filter(final_score__gte=review_score_cutoff)
             if not include_older:
                 pending_qs = pending_qs.filter(result_date__gte=review_cutoff)
-            pending_qs = pending_qs.filter(hr_decision__isnull=True)
+            pending_qs = pending_qs.filter(pending_decisions, interview__status="completed")
             urgent_cutoff = now - timedelta(days=3)
             reviewed_today_start = timezone.make_aware(datetime.combine(now.date(), datetime.min.time()))
             reviewed_today_qs = InterviewResult.objects.order_by("-result_date").filter(
-                hr_decision__isnull=False,
+                hr_decision__in=["hire", "reject"],
                 hr_decision_at__gte=reviewed_today_start,
             )
             reviewed_today_qs = reviewed_today_qs.filter(final_score__gte=review_score_cutoff)

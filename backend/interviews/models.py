@@ -3,6 +3,7 @@ from django.conf import settings
 from applicants.models import Applicant, OfficeLocation
 from .type_models import PositionType, QuestionType
 from django.utils.functional import cached_property
+from django.utils import timezone
 
 # Controlled competency list for initial interview screening
 COMPETENCY_CHOICES = [
@@ -208,6 +209,33 @@ class Interview(models.Model):
     
     def __str__(self):
         return f"{self.applicant.full_name} - {self.get_interview_type_display()} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        pending_hr_states = {None, "", "pending", "pending_hr_review"}
+        should_auto_reject = self.status == "failed" and self.hr_decision in pending_hr_states
+        update_fields = kwargs.get("update_fields")
+        if should_auto_reject:
+            # Avoid leaving failed interviews in a pending HR decision state.
+            self.hr_decision = "reject"
+            if self.hr_decision_at is None:
+                self.hr_decision_at = timezone.now()
+            if update_fields is not None:
+                update_fields = set(update_fields)
+                update_fields.update({"hr_decision", "hr_decision_at"})
+                kwargs["update_fields"] = update_fields
+
+        super().save(*args, **kwargs)
+
+        if should_auto_reject:
+            try:
+                result = self.result
+            except Exception:
+                result = None
+            if result and result.hr_decision in pending_hr_states:
+                result.hr_decision = "reject"
+                if result.hr_decision_at is None:
+                    result.hr_decision_at = timezone.now()
+                result.save(update_fields=["hr_decision", "hr_decision_at"])
     
     def check_authenticity(self):
         """

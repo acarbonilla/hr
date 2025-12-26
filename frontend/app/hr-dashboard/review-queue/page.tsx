@@ -13,7 +13,7 @@ interface ReviewItem {
   created_at?: string;
   score?: number;
   position_code?: string | null;
-  hr_decision?: "hire" | "reject" | "hold" | null;
+  hr_decision?: "hire" | "reject" | "hold" | "on_hold" | null;
 }
 
 interface ReviewStats {
@@ -46,7 +46,7 @@ const formatPosition = (code?: string | null) => {
   return code.replace(/_/g, " ").toUpperCase();
 };
 
-const getDecisionBadge = (decision?: "hire" | "reject" | "hold" | null) => {
+const getDecisionBadge = (decision?: "hire" | "reject" | "hold" | "on_hold" | null) => {
   if (!decision) {
     return { label: "Pending HR Review", classes: "bg-yellow-100 text-yellow-800" };
   }
@@ -56,7 +56,7 @@ const getDecisionBadge = (decision?: "hire" | "reject" | "hold" | null) => {
   if (decision === "reject") {
     return { label: "Reviewed (Reject)", classes: "bg-red-100 text-red-800" };
   }
-  return { label: "Reviewed (Hold)", classes: "bg-blue-100 text-blue-800" };
+  return { label: "On Hold", classes: "bg-blue-100 text-blue-800" };
 };
 
 export default function HRReviewQueuePage() {

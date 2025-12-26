@@ -29,14 +29,23 @@ class HRDashboardOverview(APIView):
         total_interviews = Interview.objects.count()
 
         # Only pull fields needed for aggregates
-        results_qs = InterviewResult.objects.only("passed", "final_score", "result_date", "final_decision")
+        results_qs = InterviewResult.objects.only(
+            "passed",
+            "final_score",
+            "result_date",
+            "final_decision",
+            "hr_decision",
+        )
         results_stats = results_qs.aggregate(
             total=Count("id"),
             passes=Count("id", filter=Q(passed=True)),
             avg_score=Avg("final_score"),
         )
 
-        pending_reviews = results_qs.filter(final_decision__isnull=True).count()
+        pending_decisions = Q(hr_decision__isnull=True) | Q(
+            hr_decision__in=["pending_hr_review", "pending", "on_hold", "hold"]
+        )
+        pending_reviews = results_qs.filter(pending_decisions, interview__status="completed").count()
         completed_today = results_qs.filter(result_date__date=today).count()
         completed_7d = results_qs.filter(result_date__date__gte=seven_days_ago).count()
         completed_30d = results_qs.filter(result_date__date__gte=thirty_days_ago).count()

@@ -48,7 +48,10 @@ def recruiter_insights(request):
         return Response({"detail": "You do not have access to recruiter insights."}, status=403)
 
     now = timezone.now()
-    pending_qs = InterviewResult.objects.filter(hr_decision__isnull=True)
+    pending_decisions = Q(hr_decision__isnull=True) | Q(
+        hr_decision__in=["pending_hr_review", "pending", "on_hold", "hold"]
+    )
+    pending_qs = InterviewResult.objects.filter(pending_decisions, interview__status="completed")
     overdue_cutoff = now - timedelta(hours=48)
 
     avg_decision_delta = (
