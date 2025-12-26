@@ -1,8 +1,11 @@
 "use client";
 
 import { useRouter, useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
+import { getHRToken } from "@/lib/auth-hr";
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 export default function ApplicantDetailPage() {
   const router = useRouter();
@@ -12,14 +15,44 @@ export default function ApplicantDetailPage() {
   const [link, setLink] = useState<string | null>(null);
   const [qrData, setQrData] = useState<{ url: string; qr_image?: string; expires_at?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [interviewId, setInterviewId] = useState<number | null>(null);
+  const [interviewStatus, setInterviewStatus] = useState<string | null>(null);
+
+  const loadLatestInterview = async () => {
+    try {
+      const token = getHRToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.get(`${API_BASE_URL}/interviews/`, {
+        headers,
+        params: { applicant_id: applicantId, page_size: 1 },
+      });
+      const results = res.data?.results || [];
+      const latest = Array.isArray(results) && results.length > 0 ? results[0] : null;
+      setInterviewId(latest?.id ?? null);
+      setInterviewStatus(latest?.status ?? null);
+    } catch (err: any) {
+      setInterviewId(null);
+      setInterviewStatus(null);
+    }
+  };
+
+  useEffect(() => {
+    loadLatestInterview();
+  }, [applicantId]);
 
   const resendLink = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      const res = await axios.post(`/api/hr/applicant/${applicantId}/resend-link/`);
+      const token = getHRToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.post(`${API_BASE_URL}/hr/applicant/${applicantId}/resend-link/`, null, { headers });
       setLink(res.data?.url);
+      setSuccess("Interview link resent.");
+      await loadLatestInterview();
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to resend link");
     } finally {
@@ -30,8 +63,11 @@ export default function ApplicantDetailPage() {
   const generateQR = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      const res = await axios.post(`/api/hr/applicant/${applicantId}/generate-qr/`);
+      const token = getHRToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.post(`${API_BASE_URL}/hr/applicant/${applicantId}/generate-qr/`, null, { headers });
       setQrData(res.data);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to generate QR");
@@ -43,8 +79,11 @@ export default function ApplicantDetailPage() {
   const resendQR = async () => {
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
-      const res = await axios.post(`/api/hr/applicant/${applicantId}/resend-qr/`);
+      const token = getHRToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.post(`${API_BASE_URL}/hr/applicant/${applicantId}/resend-qr/`, null, { headers });
       setQrData(res.data);
     } catch (err: any) {
       setError(err.response?.data?.error || "Failed to resend QR");
@@ -53,15 +92,50 @@ export default function ApplicantDetailPage() {
     }
   };
 
+  const allowRetake = async () => {
+    if (!interviewId) {
+      setError("No interview found for retake.");
+      return;
+    }
+    const reason = window.prompt("Retake approval reason (optional):") || "";
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const token = getHRToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.post(
+        `${API_BASE_URL}/interviews/${interviewId}/allow-retake/`,
+        { reason },
+        { headers }
+      );
+      setSuccess(res.data?.message || "Retake interview created and email sent to applicant.");
+      await loadLatestInterview();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "Failed to allow retake");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Applicant {applicantId}</h1>
+      {interviewStatus === "in_progress" && (
+        <button
+          onClick={resendLink}
+          disabled={loading}
+          className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+        >
+          {loading ? "Sending..." : "Resend Interview Link"}
+        </button>
+      )}
       <button
-        onClick={resendLink}
+        onClick={allowRetake}
         disabled={loading}
-        className="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition"
+        className="ml-3 px-4 py-2 bg-rose-600 text-white rounded hover:bg-rose-700 transition"
       >
-        {loading ? "Sending..." : "Resend Interview Link"}
+        {loading ? "Processing..." : "Allow Retake"}
       </button>
       <button
         onClick={generateQR}
@@ -99,6 +173,7 @@ export default function ApplicantDetailPage() {
           )}
         </div>
       )}
+      {success && <p className="text-green-600 mt-3 text-sm">{success}</p>}
       {error && <p className="text-red-600 mt-3 text-sm">{error}</p>}
     </div>
   );

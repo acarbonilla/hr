@@ -74,6 +74,9 @@ export interface Interview {
   applicant: Applicant;
   interview_type: "initial_ai" | "technical" | "final";
   status: "pending" | "in_progress" | "submitted" | "processing" | "completed" | "failed";
+  attempt_number?: number;
+  current_question_index?: number;
+  archived?: boolean;
   created_at: string;
   completed_at?: string | null;
   position_type?: string | null;

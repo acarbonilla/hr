@@ -6,12 +6,19 @@ from accounts.permissions import IsApplicant
 from common.throttles import RegistrationHourlyThrottle, RegistrationDailyThrottle
 from common.permissions import IsHRUser
 from accounts.authentication import generate_applicant_token, ApplicantTokenAuthentication
-from django.db.models import Q, OuterRef, Subquery, Exists, Value, Case, When, BooleanField, CharField
+from django.db.models import Q, OuterRef, Subquery, Exists, Value, Case, When, BooleanField
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
 from .models import Applicant, ApplicantDocument, OfficeLocation
+from .status import (
+    ACTIVE_INTERVIEW_STATUSES,
+    COMPLETED_INTERVIEW_STATUSES,
+    build_applicant_status_case,
+    build_pending_review_q,
+)
 from .serializers import (
     ApplicantSerializer,
     ApplicantCreateSerializer,
@@ -67,73 +74,67 @@ class ApplicantViewSet(viewsets.ModelViewSet):
         from interviews.models import Interview
         from results.models import InterviewResult
 
-        ACTIVE_INTERVIEW_STATUSES = ["pending", "in_progress", "submitted", "processing"]
-        COMPLETED_INTERVIEW_STATUSES = ["completed", "failed"]
-        FAILED_STATUSES = ["failed", "failed_training", "failed_onboarding"]
-
         today = timezone.localdate()
+        pending_review_q = build_pending_review_q("latest_interview_decision")
+        pending_result_review_q = build_pending_review_q("latest_result_decision")
 
         latest_interview = Interview.objects.filter(applicant=OuterRef("pk")).order_by("-created_at")
         latest_result = InterviewResult.objects.filter(applicant=OuterRef("pk")).order_by("-interview__created_at")
 
-        queryset = (
+        base_queryset = (
             super()
             .get_queryset()
             .annotate(
                 latest_interview_status=Subquery(latest_interview.values("status")[:1]),
                 latest_interview_decision=Subquery(latest_interview.values("hr_decision")[:1]),
                 latest_position_name=Subquery(latest_interview.values("position_type__name")[:1]),
+                latest_result_decision=Coalesce(
+                    Subquery(latest_result.values("hr_decision")[:1]),
+                    Subquery(latest_result.values("final_decision")[:1]),
+                ),
+                latest_result_id=Subquery(latest_result.values("id")[:1]),
+                has_result=Exists(InterviewResult.objects.filter(applicant=OuterRef("pk"))),
                 has_interview=Exists(Interview.objects.filter(applicant=OuterRef("pk"))),
                 has_active_interview=Exists(
                     Interview.objects.filter(applicant=OuterRef("pk"), status__in=ACTIVE_INTERVIEW_STATUSES)
                 ),
-                has_pending_review=Case(
-                    When(
-                        latest_interview_status__in=COMPLETED_INTERVIEW_STATUSES,
-                        latest_interview_decision__isnull=True,
-                        then=Value(True),
-                    ),
-                    default=Value(False),
-                    output_field=BooleanField(),
-                ),
-                needs_hr_action=Case(
-                    When(
-                        latest_interview_status__in=COMPLETED_INTERVIEW_STATUSES,
-                        latest_interview_decision__isnull=True,
-                        then=Value(True),
-                    ),
-                    default=Value(False),
-                    output_field=BooleanField(),
-                ),
-                latest_result_id=Subquery(latest_result.values("id")[:1]),
-                applicant_status_key=Case(
-                    When(has_interview=False, then=Value("no_interview")),
-                    When(has_active_interview=True, then=Value("interview_in_progress")),
-                    When(
-                        latest_interview_status__in=COMPLETED_INTERVIEW_STATUSES,
-                        latest_interview_decision__isnull=True,
-                        then=Value("pending_hr_decision"),
-                    ),
-                    When(status="hired", then=Value("hired")),
-                    When(
-                        status__in=FAILED_STATUSES,
-                        reapplication_date__gt=today,
-                        then=Value("failed_cooldown"),
-                    ),
-                    When(
-                        status__in=FAILED_STATUSES,
-                        reapplication_date__lte=today,
-                        then=Value("eligible_reapply"),
-                    ),
-                    When(
-                        status__in=FAILED_STATUSES,
-                        reapplication_date__isnull=True,
-                        then=Value("eligible_reapply"),
-                    ),
-                    default=Value("interview_in_progress"),
-                    output_field=CharField(),
-                ),
             )
+        )
+
+        queryset = base_queryset.annotate(
+            has_pending_review=Case(
+                When(
+                    Q(has_result=True) & pending_result_review_q,
+                    then=Value(True),
+                ),
+                When(
+                    Q(has_result=False)
+                    & Q(latest_interview_status__in=COMPLETED_INTERVIEW_STATUSES)
+                    & pending_review_q,
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+            needs_hr_action=Case(
+                When(
+                    Q(has_result=True) & pending_result_review_q,
+                    then=Value(True),
+                ),
+                When(
+                    Q(has_result=False)
+                    & Q(latest_interview_status__in=COMPLETED_INTERVIEW_STATUSES)
+                    & pending_review_q,
+                    then=Value(True),
+                ),
+                default=Value(False),
+                output_field=BooleanField(),
+            ),
+            applicant_status_key=build_applicant_status_case(
+                today_value=today,
+                result_decision_field="latest_result_decision",
+                result_exists_field="has_result",
+            ),
         )
 
         # Search by name, email, or applicant ID

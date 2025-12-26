@@ -103,6 +103,27 @@ class Interview(models.Model):
         blank=True
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    current_question_index = models.PositiveIntegerField(
+        default=0,
+        help_text="0-based index for next question when resuming an in-progress interview",
+    )
+    attempt_number = models.PositiveIntegerField(
+        default=1,
+        help_text="Interview attempt number for the applicant",
+    )
+    resumed_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Number of times HR resent the interview link",
+    )
+    last_activity_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the last applicant activity",
+    )
+    archived = models.BooleanField(
+        default=False,
+        help_text="Archived interviews are retired after HR-approved retake",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     submission_date = models.DateTimeField(null=True, blank=True, help_text="When applicant submitted all responses")
     completed_at = models.DateTimeField(null=True, blank=True)
@@ -183,6 +204,16 @@ class Interview(models.Model):
         null=True,
         blank=True,
         help_text="Timestamp when decision email was sent"
+    )
+    email_queued_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp when email delivery was queued",
+    )
+    email_last_error = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Last email delivery error, if any",
     )
     selected_question_ids = models.JSONField(
         default=list,
@@ -284,6 +315,41 @@ class Interview(models.Model):
                 position_type_id=self.position_type_id,
             ).order_by("order")
         )
+
+
+class InterviewAuditLog(models.Model):
+    """Audit log for interview resume/retake events."""
+
+    EVENT_CHOICES = [
+        ("resume_access", "Resume Access"),
+        ("resume_resend", "Resume Resend"),
+        ("retake_approved", "Retake Approved"),
+    ]
+
+    interview = models.ForeignKey(
+        Interview,
+        on_delete=models.CASCADE,
+        related_name="audit_logs",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="interview_audit_logs",
+        help_text="HR user who triggered the event (null for applicant access)",
+    )
+    event_type = models.CharField(max_length=30, choices=EVENT_CHOICES)
+    metadata = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "interview_audit_logs"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.interview_id} - {self.event_type}"
 
 class VideoResponse(models.Model):
     """Model for video responses to interview questions"""

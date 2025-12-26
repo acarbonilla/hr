@@ -5,14 +5,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from accounts.permissions import IsApplicant
 from common.permissions import IsHRUser
 from rest_framework.settings import api_settings
-from accounts.authentication import ApplicantTokenAuthentication, HRTokenAuthentication
+from accounts.authentication import ApplicantTokenAuthentication, HRTokenAuthentication, generate_applicant_token
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.db import transaction
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 from datetime import timedelta
 
-from .models import Interview, InterviewQuestion, VideoResponse, JobPosition
+from .models import Interview, InterviewAuditLog, InterviewQuestion, VideoResponse, JobPosition
 from .type_models import PositionType, QuestionType
 from .serializers import (
     InterviewListSerializer,
@@ -31,7 +32,7 @@ from .serializers import (
 from .type_serializers import JobCategorySerializer, QuestionTypeSerializer
 from .type_serializers import JobCategorySerializer as PositionTypeSerializer
 from .question_selection import select_questions_for_interview, select_questions_for_interview_with_metadata
-from services.email_service import send_decision_email
+from notifications.tasks import send_applicant_email_task
 
 
 class JobCategoryViewSet(viewsets.ModelViewSet):
@@ -344,6 +345,10 @@ class InterviewViewSet(viewsets.ModelViewSet):
         if self.action == "list":
             qs = qs.select_related("applicant", "position_type").order_by("-created_at")
 
+            applicant_id = (self.request.query_params.get("applicant_id") or "").strip()
+            if applicant_id.isdigit():
+                qs = qs.filter(applicant_id=int(applicant_id))
+
             status_param = (self.request.query_params.get("status") or "").lower()
             status_map = {
                 "passed": "completed",  # treat completed interviews as passed for list filtering
@@ -643,6 +648,76 @@ class InterviewViewSet(viewsets.ModelViewSet):
             }
         )
 
+    @action(detail=True, methods=['post'], url_path='allow-retake')
+    def allow_retake(self, request, pk=None):
+        """
+        HR approves a retake by archiving the old interview and creating a fresh attempt.
+
+        POST /api/hr/interviews/{id}/allow-retake/
+        Body: {
+            "reason": "optional reason"
+        }
+        """
+        interview = self.get_object()
+        if interview.archived:
+            return Response({"detail": "Interview already archived."}, status=status.HTTP_400_BAD_REQUEST)
+
+        reason = (request.data.get("reason") or "").strip()
+
+        with transaction.atomic():
+            interview.archived = True
+            interview.save(update_fields=["archived"])
+
+            new_interview = Interview.objects.create(
+                applicant=interview.applicant,
+                position_type=interview.position_type,
+                interview_type=interview.interview_type,
+                status="pending",
+                attempt_number=interview.attempt_number + 1,
+            )
+
+            selected_questions, selection_metadata = select_questions_for_interview_with_metadata(new_interview)
+            new_interview.selected_question_ids = [q.id for q in selected_questions]
+            new_interview.selected_question_metadata = selection_metadata
+            new_interview.save(update_fields=["selected_question_ids", "selected_question_metadata"])
+
+            InterviewAuditLog.objects.create(
+                interview=interview,
+                actor=request.user,
+                event_type="retake_approved",
+                notes=reason,
+                metadata={
+                    "applicant_id": interview.applicant_id,
+                    "old_interview_id": interview.id,
+                    "new_interview_id": new_interview.id,
+                    "approved_by": getattr(request.user, "id", None),
+                },
+            )
+
+        token = generate_applicant_token(interview.applicant_id)
+        interview_link = request.build_absolute_uri(f"/interview-login/{token}/")
+        try:
+            send_applicant_email_task.delay(
+                "retake",
+                new_interview.id,
+                {"interview_link": interview_link},
+            )
+        except Exception:
+            pass
+
+        new_interview.email_queued_at = timezone.now()
+        new_interview.email_last_error = None
+        new_interview.save(update_fields=["email_queued_at", "email_last_error"])
+
+        return Response(
+            {
+                "message": "Retake interview created and email queued for applicant.",
+                "archived_interview_id": interview.id,
+                "new_interview_id": new_interview.id,
+                "attempt_number": new_interview.attempt_number,
+            }
+        )
+
     @action(detail=True, methods=['post'], url_path='send-decision-email')
     def send_decision_email(self, request, pk=None):
         """
@@ -675,25 +750,29 @@ class InterviewViewSet(viewsets.ModelViewSet):
         interview.save(update_fields=["final_decision", "decision_set_by", "decision_set_at"])
 
         try:
-            send_decision_email(
+            send_applicant_email_task.delay(
+                "decision",
                 interview.id,
-                custom_message=custom_message,
-                sent_by=request.user,
-                include_feedback=include_feedback,
-                feedback_override=feedback_override,
+                {
+                    "custom_message": custom_message,
+                    "include_feedback": include_feedback,
+                    "feedback_override": feedback_override,
+                },
             )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            # Queueing failures should not block HR workflow.
+            pass
 
-        interview.refresh_from_db(fields=["email_sent", "email_sent_at"])
+        interview.email_queued_at = timezone.now()
+        interview.email_last_error = None
+        interview.save(update_fields=["email_queued_at", "email_last_error"])
 
         return Response(
             {
-                "message": "Decision email sent successfully.",
+                "status": "queued",
+                "email_async": True,
                 "interview_id": interview.id,
                 "final_decision": interview.final_decision,
-                "email_sent": interview.email_sent,
-                "email_sent_at": interview.email_sent_at,
             }
         )
     

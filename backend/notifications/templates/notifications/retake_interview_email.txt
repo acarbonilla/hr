@@ -1,0 +1,11 @@
+Hello {{ applicant_name }},
+
+HR has approved a retake of your interview for HireNowPro.
+
+Please use the link below to continue your interview:
+{{ interview_link }}
+
+If you have any questions, reply to this email.
+
+Thank you,
+HireNowPro Team

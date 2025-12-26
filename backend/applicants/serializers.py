@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from .models import Applicant, ApplicantDocument, OfficeLocation
+from .status import get_applicant_status_label
 
 
 class OfficeLocationSerializer(serializers.ModelSerializer):
@@ -102,47 +103,14 @@ class ApplicantCreateSerializer(serializers.ModelSerializer):
         return attrs
     
     def validate_email(self, value):
-        """Check if applicant can reapply based on their status and reapplication date"""
-        from datetime import date
-        
+        """Enforce unique applicant emails and prevent re-apply."""
+
         existing_applicant = Applicant.objects.filter(email=value).first()
         
         if existing_applicant:
-            # Statuses that have reapplication waiting periods
-            reapplication_statuses = ['failed', 'passed', 'failed_training', 'failed_onboarding']
-            
-            # If applicant has a status with reapplication waiting period
-            if existing_applicant.status in reapplication_statuses and existing_applicant.reapplication_date:
-                if date.today() < existing_applicant.reapplication_date:
-                    days_remaining = (existing_applicant.reapplication_date - date.today()).days
-                    
-                    # Different messages for different statuses
-                    status_messages = {
-                        'failed': 'interview failure',
-                        'passed': 'passing the interview',
-                        'failed_training': 'training failure',
-                        'failed_onboarding': 'onboarding failure'
-                    }
-                    status_context = status_messages.get(existing_applicant.status, 'previous application')
-                    
-                    raise serializers.ValidationError(
-                        f"You can reapply after {existing_applicant.reapplication_date.strftime('%B %d, %Y')} "
-                        f"({days_remaining} days remaining after {status_context}). "
-                        f"Please wait until the reapplication period ends."
-                    )
-                # If reapplication date has passed, allow them to reapply
-                # We'll create a new record to keep history
-                return value
-            
-            # If applicant has active status (pending, in_review), don't allow duplicate
-            if existing_applicant.status in ['pending', 'in_review']:
-                raise serializers.ValidationError(
-                    "Your application is currently being processed. Please wait for the result."
-                )
-            elif existing_applicant.status == 'hired':
-                raise serializers.ValidationError(
-                    "You are already hired. Please contact HR if you have any questions."
-                )
+            raise serializers.ValidationError(
+                "You already have an application. Please check your email for interview instructions."
+            )
         
         return value
     
@@ -154,7 +122,6 @@ class ApplicantCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Create or update applicant with geo classification and distance"""
-        from datetime import date
         from math import radians, sin, cos, sqrt, atan2
         from decimal import Decimal
 
@@ -204,26 +171,6 @@ class ApplicantCreateSerializer(serializers.ModelSerializer):
         if 'application_source' not in validated_data or not validated_data.get('application_source'):
             validated_data['application_source'] = 'walk_in' if geo_status == 'onsite' else 'online'
 
-        email = validated_data['email']
-        existing_applicant = Applicant.objects.filter(email=email).first()
-
-        # Statuses that allow reapplication after waiting period
-        reapplication_statuses = ['failed', 'passed', 'failed_training', 'failed_onboarding']
-        
-        # If they're reapplying after a status with waiting period and the period has passed
-        if existing_applicant and existing_applicant.status in reapplication_statuses:
-            if existing_applicant.reapplication_date and date.today() >= existing_applicant.reapplication_date:
-                from django.utils import timezone
-                
-                # Update existing record for reapplication (preserves history in related tables)
-                for key, value in validated_data.items():
-                    setattr(existing_applicant, key, value)
-                existing_applicant.status = 'pending'
-                existing_applicant.reapplication_date = None  # Reset reapplication date
-                existing_applicant.application_date = timezone.now()  # Update application date with timezone-aware datetime
-                existing_applicant.save()
-                return existing_applicant
-        
         # Create new applicant
         validated_data['status'] = 'pending'
         return super().create(validated_data)
@@ -274,17 +221,7 @@ class ApplicantListSerializer(serializers.ModelSerializer):
 
     def get_applicant_status(self, obj):
         status_key = getattr(obj, "applicant_status_key", None)
-        labels = {
-            "no_interview": "No Interview",
-            "interview_in_progress": "Interview In Progress",
-            "pending_hr_decision": "Pending HR Decision",
-            "failed_cooldown": "Failed (Cooldown)",
-            "eligible_reapply": "Eligible to Reapply",
-            "hired": "Hired",
-        }
-        if status_key in labels:
-            return labels[status_key]
-        return "Interview In Progress"
+        return get_applicant_status_label(status_key)
 
     def get_needs_hr_action(self, obj):
         return bool(getattr(obj, "needs_hr_action", False))

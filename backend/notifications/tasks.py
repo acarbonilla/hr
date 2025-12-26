@@ -1,38 +1,35 @@
-"""
-Celery tasks for notifications
-"""
+import logging
 
 from celery import shared_task
-import logging
+from django.utils import timezone
+
+from interviews.models import Interview
+from services.email_service import send_decision_email, send_retake_email
 
 logger = logging.getLogger(__name__)
 
 
-@shared_task
-def send_result_notification(interview_id):
-    """
-    Send notification to applicant about interview results
-    
-    TODO: Implement email sending logic
-    """
-    from interviews.models import Interview
-    
+@shared_task(bind=True)
+def send_applicant_email_task(self, email_type, interview_id, extra_context=None):
     try:
-        logger.info(f"Sending result notification for interview {interview_id}")
-        
-        interview = Interview.objects.get(id=interview_id)
-        applicant = interview.applicant
-        
-        # TODO: Implement actual email sending
-        # For now, just log
-        logger.info(f"Would send email to {applicant.email} about interview {interview_id}")
-        
-        return {
-            'status': 'success',
-            'interview_id': interview_id,
-            'recipient': applicant.email
-        }
-        
-    except Exception as e:
-        logger.error(f"Error sending notification for interview {interview_id}: {str(e)}")
-        raise
+        interview = Interview.objects.select_related("applicant").get(id=interview_id)
+    except Interview.DoesNotExist:
+        logger.error("Email task missing interview %s", interview_id)
+        return
+
+    interview.email_queued_at = interview.email_queued_at or timezone.now()
+    interview.email_last_error = None
+    interview.save(update_fields=["email_queued_at", "email_last_error"])
+
+    try:
+        if email_type == "decision":
+            send_decision_email(interview_id, sent_by=None, **(extra_context or {}))
+        elif email_type == "retake":
+            interview_link = (extra_context or {}).get("interview_link")
+            send_retake_email(interview_id, interview_link, sent_by=None)
+        else:
+            logger.error("Unknown email_type %s for interview %s", email_type, interview_id)
+    except Exception as exc:
+        logger.exception("Email task failed for %s interview %s", email_type, interview_id)
+        interview.email_last_error = str(exc)
+        interview.save(update_fields=["email_last_error"])

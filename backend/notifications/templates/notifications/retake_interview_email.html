@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Interview Retake Approved</title>
+  </head>
+  <body style="font-family: Arial, sans-serif; color: #1f2937;">
+    <p>Hello {{ applicant_name }},</p>
+    <p>HR has approved a retake of your interview for HireNowPro.</p>
+    <p>
+      <a
+        href="{{ interview_link }}"
+        style="display: inline-block; padding: 12px 18px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px;"
+      >
+        Start Retake Interview
+      </a>
+    </p>
+    <p>If the button does not work, copy and paste this link into your browser:</p>
+    <p><a href="{{ interview_link }}">{{ interview_link }}</a></p>
+    <p>If you have any questions, reply to this email.</p>
+    <p>Thank you,<br />HireNowPro Team</p>
+  </body>
+</html>

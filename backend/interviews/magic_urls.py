@@ -13,6 +13,8 @@ import jwt
 import time
 import logging
 from accounts.permissions import RolePermission
+from django.utils import timezone
+from interviews.models import Interview, InterviewAuditLog
 import base64
 import io
 
@@ -41,6 +43,9 @@ class MagicLoginView(APIView):
             applicant = Applicant.objects.filter(id=applicant_id).first()
             if not applicant:
                 raise jwt.InvalidTokenError("Applicant not found")
+            interview = Interview.objects.filter(applicant=applicant, archived=False).order_by("-created_at").first()
+            if not interview:
+                raise jwt.InvalidTokenError("Interview not found")
 
             logger.info(f"Applicant {applicant_id} accessed magic link from {request.META.get('REMOTE_ADDR')}")
 
@@ -49,6 +54,8 @@ class MagicLoginView(APIView):
                     "valid": True,
                     "applicant_id": applicant_id,
                     "token": token,
+                    "interview_id": interview.id,
+                    "redirect_url": f"/interview/{interview.id}/",
                 },
                 status=status.HTTP_200_OK,
             )
@@ -95,9 +102,25 @@ class HRResendInterviewLinkView(APIView):
         if not applicant:
             return Response({"error": "Applicant not found"}, status=status.HTTP_404_NOT_FOUND)
 
+        interview = Interview.objects.filter(applicant=applicant, archived=False).order_by("-created_at").first()
+        if not interview:
+            return Response({"error": "Interview not found"}, status=status.HTTP_404_NOT_FOUND)
+        if interview.status != "in_progress":
+            return Response({"error": "Interview is not in progress."}, status=status.HTTP_400_BAD_REQUEST)
+
+        interview.resumed_count += 1
+        interview.last_activity_at = timezone.now()
+        interview.save(update_fields=["resumed_count", "last_activity_at"])
+        InterviewAuditLog.objects.create(
+            interview=interview,
+            actor=request.user,
+            event_type="resume_resend",
+            metadata={"resumed_count": interview.resumed_count},
+        )
+
         token = generate_applicant_token(applicant.id)
         url = f"/interview-login/{token}/"
-        return Response({"url": url}, status=status.HTTP_200_OK)
+        return Response({"url": url, "interview_id": interview.id}, status=status.HTTP_200_OK)
 
 
 class QRLoginView(APIView):

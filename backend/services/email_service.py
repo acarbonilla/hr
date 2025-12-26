@@ -14,6 +14,12 @@ DECISION_TEMPLATE_MAP = {
     "fail": ("notifications/fail_email.txt", "notifications/fail_email.html", "Interview Update"),
 }
 
+RETAKE_TEMPLATE = (
+    "notifications/retake_interview_email.txt",
+    "notifications/retake_interview_email.html",
+    "You may retake your interview - HireNowPro",
+)
+
 
 def _append_custom_message(text_body, html_body, custom_message):
     cleaned = (custom_message or "").strip()
@@ -92,3 +98,35 @@ def send_decision_email(
         decision=decision,
         email_sent_by=sent_by,
     )
+
+
+def send_retake_email(interview_id, interview_link, sent_by=None):
+    interview = (
+        Interview.objects.select_related("applicant")
+        .only("id", "applicant__email", "applicant__first_name", "applicant__last_name")
+        .get(id=interview_id)
+    )
+
+    applicant = interview.applicant
+    if not applicant or not applicant.email:
+        raise ValueError("Applicant email is missing.")
+
+    text_template, html_template, subject = RETAKE_TEMPLATE
+    first_name = getattr(applicant, "first_name", "") or ""
+    last_name = getattr(applicant, "last_name", "") or ""
+    full_name = f"{first_name} {last_name}".strip()
+    context = {
+        "applicant_name": full_name or first_name or "Applicant",
+        "interview_link": interview_link,
+    }
+    text_body = render_to_string(text_template, context).strip()
+    html_body = render_to_string(html_template, context).strip()
+
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        to=[applicant.email],
+    )
+    if html_body:
+        message.attach_alternative(html_body, "text/html")
+    message.send()

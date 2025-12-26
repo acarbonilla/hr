@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.db import transaction
-from interviews.models import Interview, InterviewQuestion, JobPosition, VideoResponse
+from interviews.models import Interview, InterviewAuditLog, InterviewQuestion, JobPosition, VideoResponse
 from interviews.type_models import PositionType
 from interviews.type_serializers import JobCategorySerializer
 from interviews.serializers import InterviewSerializer, VideoResponseCreateSerializer
@@ -21,6 +21,18 @@ from interviews.tasks import process_complete_interview
 from interviews.question_selection import select_questions_for_interview, select_questions_for_interview_with_metadata
 
 logger = logging.getLogger(__name__)
+
+
+def _next_question_index(interview, answered_ids):
+    selected_ids = list(getattr(interview, "selected_question_ids", None) or [])
+    if not selected_ids and interview.position_type_id:
+        selected_ids = [q.id for q in select_questions_for_interview(interview)]
+    if not selected_ids:
+        return 0
+    for index, question_id in enumerate(selected_ids):
+        if question_id not in answered_ids:
+            return index
+    return max(0, len(selected_ids) - 1)
 
 
 class PublicInterviewCreateView(generics.CreateAPIView):
@@ -88,6 +100,31 @@ class PublicInterviewViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         interview = self.get_object()
+        if interview.archived:
+            return Response({"detail": "Interview has been archived."}, status=status.HTTP_400_BAD_REQUEST)
+
+        answered_ids = set(interview.video_responses.values_list("question_id", flat=True))
+        updated_fields = []
+        if interview.status == "pending" and answered_ids:
+            interview.status = "in_progress"
+            updated_fields.append("status")
+        if interview.status == "in_progress":
+            next_index = _next_question_index(interview, answered_ids)
+            if interview.current_question_index != next_index:
+                interview.current_question_index = next_index
+                updated_fields.append("current_question_index")
+            interview.last_activity_at = timezone.now()
+            updated_fields.append("last_activity_at")
+            InterviewAuditLog.objects.create(
+                interview=interview,
+                event_type="resume_access",
+                metadata={
+                    "next_question_index": next_index,
+                    "answered_count": len(answered_ids),
+                },
+            )
+        if updated_fields:
+            interview.save(update_fields=updated_fields)
         serializer = self.get_serializer(interview)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -121,6 +158,13 @@ class PublicInterviewViewSet(viewsets.ModelViewSet):
             duration=serializer.validated_data["duration"],
             status="uploaded",
         )
+        now = timezone.now()
+        if interview.status == "pending":
+            interview.status = "in_progress"
+        interview.last_activity_at = now
+        answered_ids = set(interview.video_responses.values_list("question_id", flat=True))
+        interview.current_question_index = _next_question_index(interview, answered_ids)
+        interview.save(update_fields=["status", "last_activity_at", "current_question_index"])
 
         transcript_error = None
         transcript_text = ""
@@ -165,13 +209,14 @@ class PublicInterviewViewSet(viewsets.ModelViewSet):
         start_time = time.monotonic()
         interview = self.get_object()
 
-        if interview.status != "pending":
+        if interview.status not in ["pending", "in_progress"]:
             return Response({"detail": "Interview already submitted."}, status=status.HTTP_400_BAD_REQUEST)
 
         logger.info("Interview %s submission received", interview.id)
         interview.status = "processing"
         interview.submission_date = timezone.now()
-        interview.save(update_fields=["status", "submission_date"])
+        interview.last_activity_at = timezone.now()
+        interview.save(update_fields=["status", "submission_date", "last_activity_at"])
 
         # Create processing queue entry for visibility (best-effort)
         try:
