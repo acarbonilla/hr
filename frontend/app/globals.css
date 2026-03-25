@@ -40,3 +40,103 @@ body {
 .animate-fade-in {
   animation: fade-in 0.5s ease-out;
 }
+
+.home-page-font {
+  font-family: "Poppins", "Nunito Sans", sans-serif;
+}
+
+@keyframes home-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes home-fade-in {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes home-orbit {
+  0% {
+    transform: translateY(0) translateX(0);
+  }
+  50% {
+    transform: translateY(-18px) translateX(12px);
+  }
+  100% {
+    transform: translateY(0) translateX(0);
+  }
+}
+
+@keyframes home-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.home-animate-fade-up {
+  animation: home-fade-up 0.3s ease-out forwards;
+  opacity: 0;
+}
+
+.home-animate-fade-in {
+  animation: home-fade-in 0.3s ease-out forwards;
+  opacity: 0;
+}
+
+.home-animate-delay-1 {
+  animation-delay: 0.05s;
+}
+
+.home-animate-delay-2 {
+  animation-delay: 0.1s;
+}
+
+.home-animate-delay-3 {
+  animation-delay: 0.15s;
+}
+
+.home-animate-delay-4 {
+  animation-delay: 0.2s;
+}
+
+.home-animate-delay-5 {
+  animation-delay: 0.25s;
+}
+
+.home-animate-orbit {
+  animation: home-orbit 10s ease-in-out infinite;
+}
+
+.home-animate-orbit-slow {
+  animation: home-orbit 14s ease-in-out infinite;
+}
+
+.home-animate-float {
+  animation: home-float 8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-animate-fade-up,
+  .home-animate-fade-in,
+  .home-animate-orbit,
+  .home-animate-orbit-slow,
+  .home-animate-float {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
